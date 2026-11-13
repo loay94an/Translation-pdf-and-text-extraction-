@@ -1,0 +1,34 @@
+name: Mobile terminal bridge checks
+on:
+  push:
+    branches:
+      - feat/mobile-local-terminal-bridge
+      - feat/android-unified-control-center
+    paths:
+      - 'apps/Illustrated-pdf-books-turned-to-ash/**'
+      - '.github/workflows/mobile-terminal-check.yml'
+  pull_request:
+    paths:
+      - 'apps/Illustrated-pdf-books-turned-to-ash/**'
+      - '.github/workflows/mobile-terminal-check.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/Illustrated-pdf-books-turned-to-ash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check local agent syntax
+        run: node --check mobile-agent/agent.mjs
+      - name: Install dependencies
+        run: npm install
+      - name: TypeScript check
+        run: npm run lint
+      - name: Build web application
+        run: npm run build
