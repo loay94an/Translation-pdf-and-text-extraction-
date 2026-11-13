@@ -185,7 +185,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun runOcr(token: String, filename: String): String = withContext(Dispatchers.IO) {
         require(filename.matches(Regex("[A-Za-z0-9._-]{1,140}\\.pdf", RegexOption.IGNORE_CASE))) { "اسم ملف PDF غير صالح." }
         val file = "\$HOME/storage/downloads/ControlCenter/$filename"
-        val command = "mkdir -p \"\$HOME/workspace/ocr\" && rm -f \"\$HOME/workspace/ocr\"/page-*.png && pdftoppm -f 1 -l 40 -r 250 -png \"$file\" \"\$HOME/workspace/ocr/page\" && for f in \"\$HOME/workspace/ocr\"/page-*.png; do [ -f \"\$f\" ] || continue; echo \"--- \$(basename \"\$f\") ---\"; tesseract \"\$f\" stdout -l ara+eng 2>/dev/null; done"
+        val command = "WORK=\"\${LOCAL_AGENT_WORKSPACE:-\$HOME/workspace}\"; mkdir -p \"\$WORK/ocr\" && rm -f \"\$WORK/ocr\"/page-*.png && pdftoppm -f 1 -l 40 -r 250 -png \"$file\" \"\$WORK/ocr/page\" && for f in \"\$WORK/ocr\"/page-*.png; do [ -f \"\$f\" ] || continue; echo \"--- \$(basename \"\$f\") ---\"; tesseract \"\$f\" stdout -l ara+eng 2>/dev/null; done"
         val response = request(token, "POST", "/api/exec", JSONObject().put("command", command).put("cwd", ".").toString())
         "رمز الخروج: ${response.optInt("exitCode")}\n${response.optString("stdout")}\n${response.optString("stderr")}"
     }
