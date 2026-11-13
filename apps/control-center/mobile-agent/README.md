@@ -201,7 +201,7 @@ python -m py_compile "$EXTRACTION_ROOT/scripts/translate_extracted_pages.py"
 ```
 PyMuPDF اختياري ولا يلزم عند اختيار صورة الصفحة كاملة أو عدم إرفاق الصور. لا يرسل المحرك النص إلى خدمة ترجمة سحابية؛ يستخدم عنوان خادم النموذج المحلي.
 
-المخرجات في مجلد `translated-pdf` داخل مساحة العمل: `*_translated.jsonl` و`*_translated.txt` و`*_translated.html` و`*_translation-report.json`، إضافة إلى مجلد الصور عند تفعيلها. ملف HTML يشير إلى الصور داخل مجلد الصور المجاور، لذا احتفظ بالمجلد معه عند النقل أو المشاركة.
+المخرجات في مجلد `translated-pdf` داخل مساحة العمل: `*_translated.jsonl` و`*_translated.txt` و`*_translated.html` و`*_translation-report.json`، إضافة إلى مجلد الصور عند تفعيلها. تُضمّن الصور داخل ملف HTML نفسه بصيغة data URI ليبقى الملف مستقلًا عند نقله أو مشاركته؛ قد يصبح حجم HTML كبيرًا عند اختيار صور الصفحات كاملة.
 
 ## الربط بين المتصفح والنموذج المحلي
 
