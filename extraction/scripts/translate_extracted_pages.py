@@ -27,8 +27,8 @@ def detect_language(text: str) -> str:
         if re.search(r"[\u0600-\u06ff]", text):
             return "ar"
         if re.search(r"[A-Za-z]", text):
-            return "en"
-        return "und"
+            return "auto"
+        return "auto"
 
 
 def request_translation(base_url: str, model: str, api_key: str, source: str, target: str,
@@ -197,7 +197,7 @@ def main() -> None:
     txt = out / f"{prefix}_translated.txt"
     txt.write_text("\n\n".join(
         f"========== الصفحة {item['page']} | {item['source_language']} → {item['target_language']} ==========\n"
-        + (f"[النص الأصلي]\n{item['original_text']}\n\n" if args.html_content == "both" else "")
+        + (f"[النص الأصلي]\n{item['original_text']}\n\n" if args.html_content in ("both", "original") else "")
         + (f"[الترجمة]\n{item['translated_text']}" if args.html_content != "original" else "")
         for item in translated), encoding="utf-8")
 
