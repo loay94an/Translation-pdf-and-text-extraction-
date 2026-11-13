@@ -1,0 +1,33 @@
+name: Extraction source checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'extraction/**/*.py'
+      - '.github/workflows/extraction-source-checks.yml'
+  pull_request:
+    paths:
+      - 'extraction/**/*.py'
+      - '.github/workflows/extraction-source-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile imported extraction modules
+        run: python -m compileall -q extraction
+      - name: Validate extraction source inventory
+        run: |
+          test -f extraction/extract_pages.py
+          test -f extraction/scripts/scan_all_books_parallel.py
+          test -f extraction/scripts/analyze_scanned_pages.py
+          test -f extraction/scripts/build_progress_dashboard.py
+          test -f extraction/scripts/validate_progress_ledger.py
+          test -f extraction/scripts/model_enrich.py
+          test -f extraction/scripts/scan_pattern_catalog_686.py
