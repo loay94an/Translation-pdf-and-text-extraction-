@@ -203,7 +203,7 @@ def main() -> None:
 
     sections = []
     for item in translated:
-        images = "".join(f'<figure><img loading="lazy" src="{html.escape(args.prefix)}_images/{html.escape(name)}" alt="صورة أصلية من الصفحة {item["page"]}"></figure>' for name in item.get("images", []))
+        images = "".join(f'<figure><img loading="lazy" src="{html.escape(prefix)}_images/{html.escape(name)}" alt="صورة أصلية من الصفحة {item["page"]}"></figure>' for name in item.get("images", []))
         original_html = f'<h3>النص الأصلي</h3><pre>{html.escape(item["original_text"])}</pre>' if args.html_content in ("both", "original") else ""
         translation_html = f'<h3>الترجمة ({html.escape(item["target_language"])})</h3><pre>{html.escape(item["translated_text"])}</pre>' if args.html_content in ("both", "translation") else ""
         sections.append(f'<section class="page" id="page-{item["page"]}"><h2>الصفحة {item["page"]} · {html.escape(item["source_language"])} ← {html.escape(item["target_language"])}</h2>{images}{original_html}{translation_html}<small>الحالة: {html.escape(item["status"])}</small></section>')
