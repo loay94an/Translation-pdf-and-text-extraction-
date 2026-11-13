@@ -5,6 +5,8 @@ on:
     paths:
       - 'apps/control-center/mobile-agent/**'
       - 'apps/control-center/public/mobile-terminal.html'
+      - 'apps/control-center/public/studio.html'
+      - 'apps/control-center/mobile-agent/check-studio.mjs'
       - 'extraction/scripts/extract_single_pdf.py'
       - '.github/workflows/mobile-terminal-check.yml'
   pull_request:
@@ -28,6 +30,8 @@ jobs:
         run: python -m py_compile extraction/scripts/extract_single_pdf.py
       - name: Check Termux agent syntax
         run: node --check apps/control-center/mobile-agent/agent.mjs
+      - name: Check professional studio dashboard
+        run: node apps/control-center/mobile-agent/check-studio.mjs
       - name: Check Android project files exist
         run: |
           test -f apps/control-center/mobile-agent/android-app/app/src/main/java/com/loay94an/controlcenter/MainActivity.kt
@@ -38,3 +42,4 @@ jobs:
           grep -q 'EXTRACTION_ROOT' apps/control-center/public/mobile-terminal.html
           grep -q '/api/extracted-pages' apps/control-center/public/mobile-terminal.html
           grep -q '/api/extracted-pages' apps/control-center/mobile-agent/agent.mjs
+          grep -q 'studio.html' apps/control-center/public/mobile-terminal.html
