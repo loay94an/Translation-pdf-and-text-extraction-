@@ -14,6 +14,7 @@ const HOME = process.env.HOME || os.homedir();
 const WORKSPACE = path.resolve(process.env.LOCAL_AGENT_WORKSPACE || path.join(HOME, 'workspace'));
 const CONFIG_DIR = path.join(HOME, '.config', 'mobile-terminal-bridge');
 const TOKEN_FILE = path.join(CONFIG_DIR, 'token');
+const BROWSER_CONTEXT_FILE = path.join(CONFIG_DIR, 'browser-context.json');
 const MAX_BODY = 32 * 1024;
 const MAX_OUTPUT = 128 * 1024;
 const TIMEOUT_MS = 120_000;
@@ -156,6 +157,29 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1');
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/context') {
+    try {
+      const saved = fs.existsSync(BROWSER_CONTEXT_FILE) ? JSON.parse(fs.readFileSync(BROWSER_CONTEXT_FILE, 'utf8')) : { items: [] };
+      return send(res, 200, { ok: true, items: Array.isArray(saved.items) ? saved.items.slice(-10) : [] });
+    } catch (error) { return send(res, 500, { ok: false, error: 'تعذر قراءة سياق المتصفح المحفوظ' }); }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/context') {
+    try {
+      const body = await readBody(req);
+      if (typeof body.text !== 'string' || !body.text.trim()) return send(res, 400, { ok: false, error: 'text is required' });
+      if (body.text.length > 24000) return send(res, 413, { ok: false, error: 'browser context exceeds 24,000 characters' });
+      const saved = fs.existsSync(BROWSER_CONTEXT_FILE) ? JSON.parse(fs.readFileSync(BROWSER_CONTEXT_FILE, 'utf8')) : { items: [] };
+      const item = { id: crypto.randomUUID(), source: String(body.source || 'browser').slice(0, 80), text: body.text.trim(), createdAt: new Date().toISOString() };
+      const items = [...(Array.isArray(saved.items) ? saved.items : []), item].slice(-10);
+      fs.writeFileSync(BROWSER_CONTEXT_FILE, JSON.stringify({ items }, null, 2), { mode: 0o600 });
+      try { fs.chmodSync(BROWSER_CONTEXT_FILE, 0o600); } catch {}
+      return send(res, 201, { ok: true, item: { id: item.id, source: item.source, createdAt: item.createdAt, characters: item.text.length }, count: items.length });
+    } catch (error) { return send(res, 400, { ok: false, error: error.message || 'invalid browser context' }); }
+  }
+  if (req.method === 'DELETE' && url.pathname === '/api/context') {
+    try { if (fs.existsSync(BROWSER_CONTEXT_FILE)) fs.unlinkSync(BROWSER_CONTEXT_FILE); return send(res, 200, { ok: true }); }
+    catch (error) { return send(res, 500, { ok: false, error: 'تعذر مسح سياق المتصفح' }); }
   }
   if (req.method === 'GET' && url.pathname === '/api/providers') {
     const providers = [
