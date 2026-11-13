@@ -13,9 +13,9 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8765);
 const HOME = process.env.HOME || os.homedir();
 const WORKSPACE = path.resolve(process.env.LOCAL_AGENT_WORKSPACE || path.join(HOME, 'workspace'));
 const CONFIG_DIR = path.join(HOME, '.config', 'mobile-terminal-bridge');
-const TOKEN_FILE = path.join(CONFIG_DIR, 'token');
+const TOKEN_FILE = path.join(CONFIG_DIR, 'token');\nconst GITHUB_TOKEN_FILE = path.join(CONFIG_DIR, 'github-token');
 const BROWSER_CONTEXT_FILE = path.join(CONFIG_DIR, 'browser-context.json');
-const MAX_BODY = 32 * 1024;
+const MAX_BODY = 8 * 1024 * 1024;
 const MAX_OUTPUT = 128 * 1024;
 const TIMEOUT_MS = 120_000;
 const JOBS_DIR = path.join(CONFIG_DIR, 'jobs');
@@ -155,7 +155,57 @@ const server = http.createServer(async (req, res) => {
   if (!authorized(req)) return send(res, 401, { ok: false, error: 'رمز الاتصال غير صحيح' });
 
   const url = new URL(req.url || '/', 'http://127.0.0.1');
-  if (req.method === 'GET' && url.pathname === '/api/health') {
+
+  if (req.method === 'POST' && url.pathname === '/api/github/connect') {
+    try {
+      const body=await readBody(req); const ghToken=String(body.token||'').trim();
+      if(!/^github_pat_[A-Za-z0-9_]+$/.test(ghToken) && !/^gh[pousr]_[A-Za-z0-9_]+$/.test(ghToken)) return send(res,400,{ok:false,error:'صيغة رمز GitHub غير معروفة'});
+      const response=await fetch('https://api.github.com/user',{headers:{Authorization:'Bearer '+ghToken,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(15000)});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)return send(res,401,{ok:false,error:data.message||'رفض GitHub الرمز أو صلاحياته'});
+      fs.writeFileSync(GITHUB_TOKEN_FILE,ghToken+'\\n',{mode:0o600});try{fs.chmodSync(GITHUB_TOKEN_FILE,0o600);}catch{}
+      return send(res,200,{ok:true,login:data.login});
+    }catch(error){return send(res,400,{ok:false,error:error.message||'تعذر ربط GitHub'});}
+  }
+  if (req.method === 'POST' && url.pathname === '/api/github/disconnect') {
+    try{if(fs.existsSync(GITHUB_TOKEN_FILE))fs.unlinkSync(GITHUB_TOKEN_FILE);return send(res,200,{ok:true});}
+    catch(error){return send(res,500,{ok:false,error:'تعذر حذف الرمز'});}
+  }
+  if (url.pathname.startsWith('/api/github/')) {
+    const ghToken=fs.existsSync(GITHUB_TOKEN_FILE)?fs.readFileSync(GITHUB_TOKEN_FILE,'utf8').trim():'';
+    if(!ghToken)return send(res,401,{ok:false,error:'اربط حساب GitHub أولًا'});
+    const gh=async(apiPath,options={})=>{const response=await fetch('https://api.github.com'+apiPath,{...options,headers:{Authorization:'Bearer '+ghToken,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(options.headers||{})},signal:AbortSignal.timeout(30000)});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'GitHub API error '+response.status);return data;};
+    try{
+      if(req.method==='GET'&&url.pathname==='/api/github/repos'){
+        const data=await gh('/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member');
+        return send(res,200,{ok:true,repositories:data.map(r=>({full_name:r.full_name,private:r.private,default_branch:r.default_branch,permissions:r.permissions||{}}))});
+      }
+      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
+        const repo=url.searchParams.get('repo')||'',branch=url.searchParams.get('branch')||'main',dir=url.searchParams.get('path')||'';
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('اسم المستودع غير صالح');
+        const data=await gh('/repos/'+repo+'/contents/'+dir.split('/').filter(Boolean).map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
+        const items=(Array.isArray(data)?data:[data]).map(x=>({name:x.name,path:x.path,type:x.type,size:x.size,sha:x.sha}));
+        return send(res,200,{ok:true,items});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/github/upload'){
+        const body=await readBody(req),repo=String(body.repo||''),branch=String(body.branch||'main'),filePath=String(body.path||''),b64=String(body.contentBase64||'');
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!filePath||filePath.startsWith('/')||filePath.split('/').some(p=>!p||p==='..'))throw new Error('بيانات المستودع أو مسار الملف غير صالح');
+        if(!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)||Buffer.from(b64,'base64').length>5*1024*1024)throw new Error('حجم الملف أكبر من 5MB أو ترميز الملف غير صالح');
+        let sha;try{const old=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));if(!Array.isArray(old))sha=old.sha;}catch{}
+        const payload={message:String(body.message||'Upload from Control Center').slice(0,200),content:b64,branch,...(sha?{sha}:{})};
+        const result=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/'),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        return send(res,200,{ok:true,commit:result.commit?.sha,path:filePath,url:result.content?.html_url});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/github/delete'){
+        const body=await readBody(req),repo=String(body.repo||''),branch=String(body.branch||'main'),filePath=String(body.path||''),sha=String(body.sha||'');
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!filePath||filePath.startsWith('/')||filePath.split('/').some(p=>!p||p==='..')||!sha)throw new Error('يلزم تحديد المستودع والمسار وSHA');
+        const result=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/'),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Delete '+filePath,sha,branch})});
+        return send(res,200,{ok:true,commit:result.commit?.sha});
+      }
+      return send(res,404,{ok:false,error:'GitHub endpoint not found'});
+    }catch(error){return send(res,400,{ok:false,error:error.message||'GitHub request failed'});}
+  }
+\n  if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
   if (req.method === 'GET' && url.pathname === '/api/storage') {
     try {
