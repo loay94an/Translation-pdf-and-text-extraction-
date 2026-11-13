@@ -47,36 +47,44 @@ function originAllowed(origin) {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
 function startJob(command, cwd, timeoutMs) {
-  if ([...jobs.values()].some(job => job.status === 'running')) throw new Error('هناك مهمة أخرى تعمل بالفعل؛ انتظر اكتمالها قبل بدء مهمة جديدة.');
+  if ([...jobs.values()].some(job => job.status === 'running' || job.status === 'cancelling')) throw new Error('هناك مهمة أخرى تعمل بالفعل؛ انتظر اكتمالها قبل بدء مهمة جديدة.');
   const id = crypto.randomUUID();
   const logPath = path.join(JOBS_DIR, id + '.log');
   const log = fs.createWriteStream(logPath, { flags: 'a', mode: 0o600 });
-  const child = spawn('bash', ['-lc', command], {
-    cwd,
-    env: { ...process.env, TERM: 'dumb', PAGER: 'cat', GIT_PAGER: 'cat' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const job = { id, command, cwd, status: 'running', exitCode: null, startedAt: new Date().toISOString(), finishedAt: null, output: '', logPath, child, progress: { stage: 'starting', completed: 0, total: 0, percent: 0 } };
-  const append = chunk => {
-    const value = chunk.toString();
-    log.write(value);
-    job.output = (job.output + value).slice(-128 * 1024);
+  const child = spawn('bash', ['-lc', command], { cwd, env: { ...process.env, TERM: 'dumb', PAGER: 'cat', GIT_PAGER: 'cat' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const job = { id, command, cwd, status: 'running', exitCode: null, startedAt: new Date().toISOString(),
+    finishedAt: null, output: '', logPath, child, progress: { stage: 'starting', completed: 0, total: 0, percent: 0 } };
+  let pending = '';
+  const append = (chunk, isError = false) => {
+    pending += chunk.toString();
+    const lines = pending.split(/\\r?\\n/);
+    pending = lines.pop() || '';
+    for (const line of lines) {
+      if (line.startsWith('@@PROGRESS ')) {
+        try { job.progress = JSON.parse(line.slice(11)); persistJob(job); } catch {}
+      } else {
+        const value = (isError ? '[stderr] ' : '') + line + '\\n';
+        log.write(value);
+        job.output = (job.output + value).slice(-MAX_OUTPUT);
+      }
+    }
   };
-  child.stdout.on('data', append);
-  child.stderr.on('data', chunk => append(Buffer.from('[stderr]\n' + chunk.toString())));
+  child.stdout.on('data', chunk => append(chunk));
+  child.stderr.on('data', chunk => append(chunk, true));
   const timer = setTimeout(() => {
     job.timedOut = true;
     child.kill('SIGTERM');
-    setTimeout(() => { if (job.status === 'running') child.kill('SIGKILL'); }, 5000).unref();
+    setTimeout(() => { if (job.status === 'running' || job.status === 'cancelling') child.kill('SIGKILL'); }, 5000).unref();
   }, Math.min(Math.max(timeoutMs || TIMEOUT_MS, 1000), MAX_JOB_MS));
   child.on('error', error => {
-    job.status = 'failed'; job.exitCode = 1; job.output += '\n' + error.message;
+    job.status = 'failed'; job.exitCode = 1; job.output = (job.output + '\\n' + error.message).slice(-MAX_OUTPUT);
     job.finishedAt = new Date().toISOString(); clearTimeout(timer); log.end(); persistJob(job);
   });
   child.on('close', code => {
-    job.status = job.timedOut ? 'timed_out' : (code === 0 ? 'completed' : 'failed');
+    if (pending) append(Buffer.from('\\n' + pending));
+    job.status = job.timedOut ? 'timed_out' : (job.status === 'cancelling' ? 'cancelled' : (code === 0 ? 'completed' : 'failed'));
     job.exitCode = code; job.finishedAt = new Date().toISOString();
-    clearTimeout(timer); if (pending) { log.write(pending); job.output = (job.output + pending).slice(-MAX_OUTPUT); pending = ''; } log.end(); persistJob(job);
+    clearTimeout(timer); log.end(); persistJob(job);
   });
   jobs.set(id, job);
   persistJob(job);
