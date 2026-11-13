@@ -49,7 +49,7 @@ bash doctor.sh
 الأدوات المطلوبة لمسار الاستخراج الحالي:
 - Poppler: `pdftotext`, `pdfimages`, `pdftoppm`.
 - Tesseract مع `ara` و`eng` (وتضاف اللغات الأخرى عند الحاجة).
-- Python 3 لتشغيل سكربتات استخراج المكتبة الموجودة في فرع `feat/scanned-library-extraction-pipeline`، ومنها `scripts/model_enrich.py` لاستخراج البيانات المنظمة بالنموذج.
+- Python 3 لتشغيل محركات الاستخراج الموجودة في جذر المستودع داخل `extraction/`، ومنها `extraction/scripts/model_enrich.py` لاستخراج البيانات المنظمة بالنموذج.
 
 ## مهام الخلفية والنماذج المحلية
 
@@ -78,7 +78,7 @@ LOCAL_AGENT_ALLOWED_ORIGINS="https://your-domain.example" bash start.sh
 
 
 ### تشغيل مرحلة البيانات المنظمة
-بعد انتهاء OCR، اضغط زر **استخراج البيانات بالنموذج**. هذه المرحلة تستخدم `scripts/model_enrich.py` في فرع مكتبة الاستخراج، وتكتب نتائج JSONL في `assets/fashion-model-library/extracted-knowledge/structured-pages/`. ابدأ بعينة صغيرة من الطرفية قبل تشغيل كل الكتب:
+بعد انتهاء OCR، اضغط زر **استخراج البيانات بالنموذج**. هذه المرحلة تستخدم `$EXTRACTION_ROOT/scripts/model_enrich.py` من المستودع الموحد، وتكتب نتائج JSONL في `assets/fashion-model-library/extracted-knowledge/structured-pages/`. ابدأ بعينة صغيرة من الطرفية قبل تشغيل كل الكتب:
 ```bash
 python "$EXTRACTION_ROOT/scripts/model_enrich.py" --book-id BOOK_ID --max-pages 2
 ```
