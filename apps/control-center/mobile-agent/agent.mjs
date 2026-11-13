@@ -191,7 +191,8 @@ const server = http.createServer(async (req, res) => {
         const content=Buffer.from(data.content.replace(/\n/g,''),'base64').toString('utf8');
         return send(res,200,{ok:true,path:data.path,sha:data.sha,size:data.size,content});
       }
-\n      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
+
+      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
         const repo=url.searchParams.get('repo')||'',branch=url.searchParams.get('branch')||'main',dir=url.searchParams.get('path')||'';
         if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('اسم المستودع غير صالح');
         const data=await gh('/repos/'+repo+'/contents/'+dir.split('/').filter(Boolean).map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
@@ -216,7 +217,8 @@ const server = http.createServer(async (req, res) => {
       return send(res,404,{ok:false,error:'GitHub endpoint not found'});
     }catch(error){return send(res,400,{ok:false,error:error.message||'GitHub request failed'});}
   }
-\n  if (req.method === 'GET' && url.pathname === '/api/health') {
+
+  if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
   if (req.method === 'GET' && url.pathname === '/api/storage') {
     try {
