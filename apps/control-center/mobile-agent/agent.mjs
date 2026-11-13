@@ -141,7 +141,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': req.headers.origin || 'null',
       'Vary': 'Origin',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
       'Access-Control-Allow-Headers': 'Authorization,Content-Type',
       'Access-Control-Allow-Private-Network': 'true',
       'Access-Control-Max-Age': '600',
