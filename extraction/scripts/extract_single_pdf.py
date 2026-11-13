@@ -57,10 +57,13 @@ def run():
                             capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode:
         raise SystemExit(result.stderr.strip() or "فشل pdftotext")
+    expected_pages = total
     chunks = result.stdout.split("\f")
     if chunks and not chunks[-1].strip():
         chunks.pop()
     page_texts = [chunk.strip() for chunk in chunks]
+    if expected_pages and len(page_texts) < expected_pages:
+        page_texts.extend([""] * (expected_pages - len(page_texts)))
     total = len(page_texts)
     if total == 0:
         raise SystemExit("لم يتم العثور على صفحات في ملف PDF")
