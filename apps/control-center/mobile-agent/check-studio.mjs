@@ -12,7 +12,7 @@ new Function(script);
 const required = [
   'id="pdf"', 'id="ocr"', 'id="models"', 'id="browser"', 'id="terminal"',
   'id="settings"', 'id="translation"', 'id="sourceLanguage"', 'id="targetLanguage"', 'id="translationModel"', 'id="translationImages"', 'id="translationChunkChars"', 'id="translationProgress"', 'id="htmlContent"', 'startTranslation', 'pollTranslation', 'translate_extracted_pages.py', 'id="ocrMode"', 'id="minTextChars"', 'id="cancelJob"', 'id="jobsHistory"', '/api/jobs', '/api/chat', '/api/exec', '/api/extracted-pages', '/api/context', 'p.percent', '/cancel', '/retry',
-  'confirm(', 'localStorage', 'id="quickCommands"', 'id="commandSearch"', 'id="customCommandName"', 'id="customCommandValue"', 'id="saveCustomCommand"', 'id="analyzeTerminalError"', 'id="storageInfo"', 'id="refreshStorage"', 'cc_custom_commands', '/api/storage', 'LOCAL_AGENT_WORKSPACE'
+  'confirm(', 'localStorage', 'id="quickCommands"', 'id="commandSearch"', 'id="customCommandName"', 'id="customCommandValue"', 'id="saveCustomCommand"', 'id="analyzeTerminalError"', 'id="storageInfo"', 'id="refreshStorage"', 'cc_custom_commands', '/api/storage', 'LOCAL_AGENT_WORKSPACE', 'id="termuxSetupCommand"', 'id="copySetupCommand"', 'cat "$HOME/.config/mobile-terminal-bridge/token"'
 ];
 for (const token of required) {
   if (!html.includes(token)) throw new Error('Missing required studio feature: ' + token);
