@@ -58,7 +58,7 @@
 
 <section id="github" class="view">
  <div class="titlebar"><div><h2>ربط GitHub وإدارة المستودعات</h2><div class="muted">اربط حسابك مرة واحدة، ثم اختر المستودع والفرع والملفات لإدارتها من الطرفية المحلية</div></div><span class="pill">صلاحيات محدودة</span></div>
- <div class="hint">أنشئ Fine-grained token مخصصًا لهذا التطبيق فقط. اختر حسابك، ثم حدّد المستودع أو المستودعات المطلوبة، وامنح Contents: Read and write وMetadata: Read-only. لا تمنح صلاحيات حذف المستودع أو إدارة الحساب. لا تشارك الرمز مع أي شخص.</div>
+ <div class="hint">أنشئ Fine-grained token مخصصًا لهذا التطبيق فقط. اختر حسابك، ثم حدّد المستودع أو المستودعات المطلوبة، وامنح Contents: Read and write وMetadata: Read-only. لا تمنح صلاحيات حذف المستودع أو إدارة الحساب. لا تستخدم Classic token. بعد إنشاء الرمز انسخه فورًا (لن تعرضه GitHub مرة أخرى)، ثم الصقه هنا واضغط ربط. يحفظ الجسر نسخة في مجلد Termux الخاص بصلاحية 600، ولا يحفظها المتصفح. فصل الحساب يحذف النسخة المحلية فقط؛ لإبطال الرمز نهائيًا احذفه من إعدادات GitHub.</div>
  <div class="actions"><button id="githubCreateToken" class="secondary">إنشاء رمز GitHub</button><a id="githubTokenHelp" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" style="color:#8db8ff;align-self:center">فتح صفحة إنشاء Fine-grained token ↗</a></div>
  <div class="field"><label>Personal Access Token — لن يُحفظ في المتصفح</label><input id="githubPat" type="password" autocomplete="off" placeholder="github_pat_..." dir="ltr"></div>
  <div class="actions"><button id="githubConnect">ربط / اختبار الاتصال</button><button id="githubDisconnect" class="secondary">فصل الحساب وحذف الرمز المحفوظ</button><span id="githubStatus" class="muted">غير مربوط</span></div>
