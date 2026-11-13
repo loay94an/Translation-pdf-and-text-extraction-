@@ -1,0 +1,76 @@
+name: Extract 686 fashion patterns in parallel
+
+on:
+  push:
+    branches:
+      - feat/parallel-686-pattern-catalog
+      - perf/parallel-resumable-pattern-catalog
+    paths:
+      - "scripts/scan_pattern_catalog_686.py"
+      - ".github/workflows/extract-pattern-catalog-686.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pattern-catalog-686-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  extract-patterns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout pattern library and LFS files
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Verify Python syntax
+        run: python3 -m py_compile scripts/scan_pattern_catalog_686.py
+
+      - name: Pull LFS source PDFs
+        run: git lfs pull
+
+      - name: Install PDF and OCR tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-por tesseract-ocr-eng
+          tesseract --list-langs
+          git lfs version
+
+      - name: Scan all pattern PDFs with bounded parallel OCR
+        id: scan
+        run: python3 scripts/scan_pattern_catalog_686.py --workers 12 --expected-books 686
+
+      - name: Upload derived catalog and progress snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pattern-catalog-686-snapshot
+          path: |
+            assets/fashion-model-library/pattern-library/pattern-catalog.jsonl
+            assets/fashion-model-library/pattern-library/pattern-progress.json
+            assets/fashion-model-library/pattern-library/pattern-extraction-report.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Persist resumable derived results to this branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for path in \
+            assets/fashion-model-library/pattern-library/pattern-catalog.jsonl \
+            assets/fashion-model-library/pattern-library/pattern-progress.json \
+            assets/fashion-model-library/pattern-library/pattern-extraction-report.json; do
+            if [ -f "$path" ]; then git add "$path"; fi
+          done
+          if git diff --cached --quiet; then
+            echo "No new pattern extraction results to persist."
+          else
+            git commit -m "Persist resumable pattern extraction results"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
