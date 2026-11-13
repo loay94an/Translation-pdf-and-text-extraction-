@@ -1,0 +1,38 @@
+name: PDF web app build
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/control-center/**'
+      - '.github/workflows/control-center-web-build.yml'
+  pull_request:
+    paths:
+      - 'apps/control-center/**'
+      - '.github/workflows/control-center-web-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/control-center
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/control-center/package.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build PDF web application
+        run: npm run build
+      - name: Upload built website
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-web-app-dist
+          path: apps/control-center/dist/
+          if-no-files-found: error
+          retention-days: 14
