@@ -157,6 +157,18 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1');
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
+  if (req.method === 'GET' && url.pathname === '/api/storage') {
+    try {
+      const stat = fs.statfsSync(WORKSPACE);
+      const blockSize = Number(stat.bsize);
+      const totalBytes = Number(stat.blocks) * blockSize;
+      const freeBytes = Number(stat.bavail) * blockSize;
+      return send(res, 200, { ok: true, workspace: WORKSPACE, totalBytes,
+        freeBytes, usedBytes: Math.max(0, totalBytes - Number(stat.bfree) * blockSize) });
+    } catch (error) {
+      return send(res, 500, { ok: false, error: 'تعذر قراءة مساحة التخزين: ' + error.message });
+    }
+  }
   }
   if (req.method === 'GET' && url.pathname === '/api/context') {
     try {
