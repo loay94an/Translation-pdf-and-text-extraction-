@@ -2,6 +2,18 @@ import fs from 'node:fs';
 
 const file = 'apps/control-center/public/studio.html';
 const html = fs.readFileSync(file, 'utf8');
+const androidAsset = 'apps/control-center/mobile-agent/android-app/app/src/main/assets/studio.html';
+const bundledHtml = fs.readFileSync(androidAsset, 'utf8');
+if (bundledHtml !== html) throw new Error('Android Studio asset is out of sync with the web Studio source');
+for (const token of ['AndroidSecureStore', 'getToken', 'setToken']) {
+  if (!html.includes(token)) throw new Error('Missing secure Android token bridge: ' + token);
+}
+const activity = fs.readFileSync('apps/control-center/mobile-agent/android-app/app/src/main/java/com/loay94an/controlcenter/MainActivity.kt', 'utf8');
+for (const token of ['WebViewAssetLoader', 'AndroidSecureStore', 'appassets.androidplatform.net/assets/studio.html']) {
+  if (!activity.includes(token)) throw new Error('Missing embedded Android Studio integration: ' + token);
+}
+const startScript = fs.readFileSync('apps/control-center/mobile-agent/start.sh', 'utf8');
+if (!startScript.includes('https://appassets.androidplatform.net')) throw new Error('Android Studio origin is not allowed by the Termux agent launcher');
 const start = html.indexOf('<script>');
 const end = html.indexOf('</script>', start + 8);
 if (start < 0 || end < 0 || html.indexOf('<script>', start + 8) >= 0) {
