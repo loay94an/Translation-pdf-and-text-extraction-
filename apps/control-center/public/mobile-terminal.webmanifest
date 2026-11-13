@@ -1,0 +1,13 @@
+{
+  "id": "/mobile-terminal.html",
+  "name": "الطرفية المحلية للهاتف",
+  "short_name": "طرفية الهاتف",
+  "description": "واجهة هاتف لإدارة خادم Termux المحلي",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/mobile-terminal.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080d18",
+  "theme_color": "#080d18"
+}
