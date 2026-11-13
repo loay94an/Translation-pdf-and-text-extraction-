@@ -1,115 +1,80 @@
-# تجهيز الهاتف لاستخراج مكتبة المراجع
+# تجهيز الهاتف لاستخراج ملفات PDF
 
-## البنية المطلوبة
+## مكونات النظام
 
-- الموقع: واجهة عربية تعمل من المتصفح أو كتطبيق PWA.
-- Termux: خادم محلي مرافق على 127.0.0.1:8765.
-- أدوات PDF: Poppler (pdftotext وpdfimages وpdftoppm).
-- OCR: Tesseract مع ara وeng، ويمكن إضافة لغات أخرى حسب الكتب.
-- النماذج المحلية: llama.cpp server بواجهة OpenAI-compatible على 127.0.0.1:8080/v1.
-- النماذج السحابية: Gemini من خادم التطبيق؛ لا تضع مفاتيح API في صفحة المتصفح.
+- واجهة PDF في `apps/control-center/`.
+- خادم Termux المحلي وواجهة التحكم في `apps/control-center/mobile-agent/`.
+- محركات الاستخراج في `extraction/` في جذر هذا المستودع.
+- ملفات الكتب الأصلية والفهرس الخاص تبقى في مساحة عمل خاصة منفصلة ولا تُرفع إلى المستودع العام.
 
-## تثبيت الأدوات
+## تثبيت Termux
 
-من Termux داخل مجلد mobile-agent:
+من مجلد المشروع:
 
 ```bash
+pkg update -y
+pkg install -y nodejs-lts python poppler tesseract
+cd "$HOME/workspace/Translation-pdf-and-text-extraction-/apps/control-center/mobile-agent"
 bash install-termux.sh
 bash doctor.sh
-```
-
-## تنزيل نسخة واجهة الهاتف
-
-بعد تسجيل الدخول إلى GitHub من Termux (مرة واحدة)، نزّل فرع واجهة الهاتف في مجلد مستقل؛ فهو يحتوي خادم الاتصال وصفحة PWA:
-```bash
-pkg install gh -y
-gh auth login
-gh auth setup-git
-git clone --branch feat/mobile-local-terminal-bridge https://github.com/loay94an/reference-and-books-on-patterns-and-models.git "$HOME/mobile-bridge"
-```
-
-## ربط مستودع الاستخراج
-
-مجلد الاستخراج الذي يحتوي `extract_pages.py` و`scripts/analyze_scanned_pages.py` موجود في فرع العمل:
-
-`feat/scanned-library-extraction-pipeline`
-
-لأن المستودع خاص، سجّل الدخول أولاً (اختياريًا عبر GitHub CLI):
-
-```bash
-pkg install gh -y
-gh auth login
-gh auth setup-git
-mkdir -p "$HOME/workspace"
-git clone --branch feat/scanned-library-extraction-pipeline https://github.com/loay94an/reference-and-books-on-patterns-and-models.git "$HOME/workspace/reference-and-books-on-patterns-and-models"
-```
-
-إذا كان المجلد موجودًا بالفعل، لا تستنسخه مرة أخرى؛ حدّثه وتأكد من الفرع الصحيح. يجب أن يحتوي المجلد على:
-- `assets/fashion-model-library/catalog/books.json`
-- ملفات PDF الأصلية المتاحة محليًا (وقد تتطلب Git LFS).
-- `extract_pages.py`
-- `scripts/analyze_scanned_pages.py`
-
-بعد الاستنساخ، تأكد من تنزيل كائنات Git LFS:
-```bash
-git -C "$HOME/workspace/reference-and-books-on-patterns-and-models" lfs pull
-```
-إذا لم يكن `git lfs` متاحًا في إصدار Termux لديك، نزّل ملفات PDF الأصلية إلى مجلدات المصدر يدويًا، ولا تبدأ الاستخراج قبل التأكد من وجودها.
-
-## تشغيل الخادم وربطه بالموقع
-
-شغّل خادم الهاتف من نسخة فرع واجهة الهاتف، مع توجيه مساحة العمل إلى نسخة مستودع الاستخراج:
-
-```bash
-cd /path/to/your/mobile-bridge-checkout/apps/Illustrated-pdf-books-turned-to-ash/mobile-agent
-LOCAL_AGENT_WORKSPACE="$HOME/workspace/reference-and-books-on-patterns-and-models" \
-LOCAL_AGENT_ALLOWED_ORIGINS="https://YOUR-PUBLISHED-DOMAIN" \
 bash start.sh
 ```
 
-استبدل `YOUR-PUBLISHED-DOMAIN` بعنوان الموقع الفعلي فقط. لا تستخدم `*` ولا تكشف المنفذ على الشبكة العامة. انسخ رمز الاتصال الظاهر في Termux إلى صفحة الطرفية المحلية، ولا تشاركه.
+يعين `start.sh` متغير `EXTRACTION_ROOT` تلقائيًا إلى مجلد `extraction` في جذر المستودع. خادم الطرفية يستمع إلى `127.0.0.1` ويولد رمز Bearer عشوائيًا؛ لا تشارك الرمز ولا تفتح المنفذ على الشبكة العامة.
 
-## تشغيل الاستخراج من واجهة الموقع
+## تجهيز مكتبة المراجع
 
-- شغّل فحص الأدوات أولًا.
-- اختبر اتصال النموذج المحلي إذا كان llama-server يعمل على المنفذ 8080.
-- شغّل استخراج النصوص المضمنة من PDF.
-- بعد اكتماله شغّل OCR وفهرسة الصور للصفحات قليلة النص.
-- تبقى نتائج OCR موسومة بأنها آلية وغير متحققة، ويجب مراجعتها قبل اعتماد القياسات أو تحويلها إلى باترونات.
+ضع نسخة مكتبة المراجع الخاصة في مجلد منفصل ضمن مساحة العمل، مثل:
 
-## استخراج البيانات المنظمة بالنموذج
+`$HOME/workspace/reference-and-books-on-patterns-and-models`
 
-بعد اكتمال OCR، يوجد في فرع الاستخراج سكربت `scripts/model_enrich.py` يحوّل نص كل صفحة إلى حقول JSON منظمة:
-- نوع القطعة أو الملابس عند ذكره صراحة.
-- أسماء قطع الباترون كما وردت في النص.
-- القياسات والقيم والوحدات مع مقتطف دليل من الصفحة.
-- جداول المقاسات عندما تكون الصفوف واضحة بالكامل.
-- طرق التنفيذ والخامات والمصطلحات الفنية.
-- مواضع الشك التي تحتاج مراجعة بشرية.
+يجب أن تحتوي على:
+- `assets/fashion-model-library/catalog/books.json`
+- ملفات PDF الأصلية في مساراتها المتوقعة.
 
-السكربت قابل للاستئناف؛ يتجاوز الصفحات المسجلة مسبقًا ويحفظ كل صفحة فور نجاحها في `extracted-knowledge/structured-pages/`. ابدأ بعينة صغيرة:
+هذه الملفات غير موجودة في المستودع العام. احتفظ بها في مستودع خاص أو على الجهاز، ولا ترفع ملفات PDF أو صور الصفحات أو النصوص الكاملة المستخرجة إلى GitHub العام.
+
+## تشغيل الاستخراج من واجهة الطرفية
+
+في صفحة الطرفية المحلية:
+1. اتصل بخادم Termux باستخدام الرمز.
+2. غيّر مجلد العمل إلى مجلد مكتبة المراجع الخاصة.
+3. شغّل استخراج النصوص المضمنة.
+4. شغّل OCR للصفحات المصورة.
+5. شغّل استخراج البيانات المنظمة بالنموذج المحلي عند الحاجة.
+
+المحركات التي تستدعيها الواجهة موجودة هنا:
+- `$EXTRACTION_ROOT/extract_pages.py`
+- `$EXTRACTION_ROOT/scripts/analyze_scanned_pages.py`
+- `$EXTRACTION_ROOT/scripts/model_enrich.py`
+
+## متطلبات OCR
+
+ثبت Poppler وTesseract، وتأكد من توفر اللغتين العربية والإنجليزية. بعض توزيعات Termux تحتاج تثبيت حزم اللغات بشكل منفصل. افحص الأدوات عبر:
+
 ```bash
-python scripts/model_enrich.py --book-id BOOK_ID --max-pages 2
+pdftotext -v
+pdfimages -v
+pdftoppm -v
+tesseract --list-langs
 ```
-ثم شغّل جميع الصفحات:
-```bash
-python scripts/model_enrich.py --max-chars 800 --max-tokens 256
-```
-زر **استخراج البيانات بالنموذج** في صفحة الهاتف يشغّل هذه المرحلة في الخلفية.
 
-## النماذج
+## النموذج المحلي
 
-لتشغيل llama.cpp، استخدم أمر `llama-server` المناسب لملف GGUF لديك، مع:
-`--host 127.0.0.1 --port 8080`
+شغّل خادم llama.cpp بواجهة OpenAI-compatible على:
 
-يكتشف الموقع النماذج من:
-`http://127.0.0.1:8080/v1/models`
+`http://127.0.0.1:8080/v1`
 
-يمكن تغيير العنوان عبر `LOCAL_MODEL_BASE_URL`، واختيار النموذج عبر `LOCAL_MODEL_NAME` (الافتراضي `qwen-local`)، وإضافة مفتاح عبر `LOCAL_MODEL_API_KEY` عند الحاجة. لا تضع المفتاح في HTML أو Git. النموذج المحلي الصغير مفيد للتصنيف الأولي لكنه قد لا يلتقط الجداول المعقدة بدقة؛ استخدم نموذجًا أقوى أو سحابيًا متوافقًا مع OpenAI عند الحاجة، وراجع النتائج دائمًا. هذا المسار النصي لا يحلل الرسومات أو هندسة قطع الباترون بصريًا.
+يمكن ضبط:
+- `LOCAL_MODEL_BASE_URL`
+- `LOCAL_MODEL_NAME`
+- `LOCAL_MODEL_API_KEY` (إذا كان خادمك المحلي يطلبه)
 
-## حدود مهمة
+لا تحفظ المفاتيح في ملفات Git أو HTML. راجع نتائج OCR والبيانات المنظمة قبل اعتمادها؛ قد يخطئ النموذج في الأرقام والجداول والقياسات.
 
-- مهام الاستخراج تعمل بالخلفية ويمكن متابعة مخرجاتها، لكن حالة المهمة الحية محفوظة في ذاكرة الخادم؛ إذا أُغلق Termux أو أعيد تشغيله، ستحتاج إلى مراجعة ملفات السجل ومخرجات الاستخراج قبل إعادة المهمة.
-- يجب أن تبقى ملفات PDF ومساحة التخزين متاحة، والهاتف موصولًا بالطاقة عند معالجة الكتب الطويلة.
-- هذا ليس عزلًا أمنيًا كاملًا: الأوامر تعمل بصلاحيات مستخدم Termux. لا تشغّل أوامر غير موثوقة.
-- لا يتم رفع ملفات الكتب تلقائيًا إلى GitHub أو إلى أي خدمة سحابية. ارفع النتائج المسموح بها فقط بعد مراجعة الترخيص والخصوصية.
+## حدود التكامل
+
+- ربط النموذج المحلي متاح عبر خادم Termux إذا كان خادم النموذج يعمل.
+- تكامل ChatGPT عبر Sign in with ChatGPT موثق كتصميم، لكنه ليس منفذًا بالكامل في التطبيق الحالي.
+- لا يقرأ التطبيق Cookies أو سجل Chrome أو جلسات تطبيق ChatGPT.
+- أوامر Termux تعمل بصلاحيات المستخدم؛ لا تشغّل أوامر غير موثوقة.
