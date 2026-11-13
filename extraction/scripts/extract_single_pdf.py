@@ -74,8 +74,8 @@ def run():
             if not block:
                 break
             buffer += block
-            while "\\f" in buffer:
-                page, buffer = buffer.split("\\f", 1)
+            while "\f" in buffer:
+                page, buffer = buffer.split("\f", 1)
                 yielded += 1
                 yield page
         if buffer or yielded == 0:
@@ -98,10 +98,10 @@ def run():
             raise SystemExit(result.stderr.strip() or "فشل pdftotext")
         if not raw_text_path.is_file():
             raise SystemExit("لم ينتج pdftotext ملف النص المؤقت")
-        with jsonl.open("w", encoding="utf-8", newline="\\n") as jsonl_file, \\
-             txt.open("w", encoding="utf-8", newline="\\n") as txt_file, \\
-             html_path.open("w", encoding="utf-8", newline="\\n") as html_file:
-            html_file.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>استخراج صفحات PDF</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:auto;padding:20px;background:#f6f7f9;color:#172033}.page{background:white;border:1px solid #d8dee8;border-radius:12px;padding:18px;margin:18px 0;break-after:page}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;direction:rtl}</style></head><body><h1>النص المستخرج</h1>\\n')
+        with jsonl.open("w", encoding="utf-8", newline="\n") as jsonl_file, \
+             txt.open("w", encoding="utf-8", newline="\n") as txt_file, \
+             html_path.open("w", encoding="utf-8", newline="\n") as html_file:
+            html_file.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>استخراج صفحات PDF</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:auto;padding:20px;background:#f6f7f9;color:#172033}.page{background:white;border:1px solid #d8dee8;border-radius:12px;padding:18px;margin:18px 0;break-after:page}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;direction:rtl}</style></head><body><h1>النص المستخرج</h1>\n')
             with raw_text_path.open("r", encoding="utf-8", errors="replace", newline="") as raw_file:
                 for number, raw_page in enumerate(iter_pages(raw_file, expected_pages), 1):
                     original = raw_page.strip()
@@ -141,16 +141,16 @@ def run():
                     record = {"page": number, "source_pdf": pdf.name, "text": text, "characters": len(text),
                               "review_status": "machine_extracted_unverified", "extraction_method": method,
                               "ocr_status": status if should_ocr else "not_requested"}
-                    jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\\n")
-                    txt_file.write(f"{'=' * 24} الصفحة {number} {'=' * 24}\\n\\n{text}\\n\\n")
+                    jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    txt_file.write(f"{'=' * 24} الصفحة {number} {'=' * 24}\n\n{text}\n\n")
                     (out / f"{prefix}_page_{number:04d}.txt").write_text(
-                        f"الصفحة {number} من {expected_pages or '?'}\\n\\n{text}\\n", encoding="utf-8")
-                    html_file.write(f'<section class="page" id="page-{number}"><h2>الصفحة {number}</h2><pre>{html.escape(text)}</pre></section>\\n')
+                        f"الصفحة {number} من {expected_pages or '?'}\n\n{text}\n", encoding="utf-8")
+                    html_file.write(f'<section class="page" id="page-{number}"><h2>الصفحة {number}</h2><pre>{html.escape(text)}</pre></section>\n')
                     progress_total = expected_pages or number
                     emit({"event": "progress", "stage": "extracting", "completed": number, "total": progress_total,
                           "percent": round(number * 100 / progress_total, 1) if progress_total else 0,
                           "page": number, "characters": len(text), "method": method, "status": status})
-            html_file.write("</body></html>\\n")
+            html_file.write("</body></html>\n")
 
     total = total_seen
     if total == 0:
@@ -160,7 +160,7 @@ def run():
               "ocr_settings": {"languages": args.ocr_lang, "dpi": args.dpi, "psm": args.psm, "min_text_chars": args.min_text_chars},
               "ocr_pages": ocr_pages, "failures": failures,
               "outputs": {"jsonl": str(jsonl), "txt": str(txt), "html": str(html_path), "page_txt_dir": str(out)}}
-    (out / "extraction-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    (out / "extraction-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     emit({"event": "completed", "stage": "finished", "completed": total, "total": total, "percent": 100,
           "failures": len(failures), "outputs": report["outputs"]})
     print(json.dumps(report, ensure_ascii=False, indent=2))
