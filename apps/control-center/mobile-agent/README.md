@@ -40,7 +40,7 @@ LOCAL_AGENT_WORKSPACE="$HOME/projects" node agent.mjs
 
 ## تجهيز محركات استخراج المراجع
 
-اقرأ الدليل العربي الكامل في `EXTRACTION-SETUP-AR.md`. لتثبيت أدوات Termux:
+اقرأ الدليل العربي الكامل في `EXTRACTION-SETUP-AR.md`، وابدأ من `QUICKSTART-AR.md`. لتثبيت أدوات Termux:
 ```bash
 bash install-termux.sh
 bash doctor.sh
@@ -80,7 +80,7 @@ LOCAL_AGENT_ALLOWED_ORIGINS="https://your-domain.example" bash start.sh
 ### تشغيل مرحلة البيانات المنظمة
 بعد انتهاء OCR، اضغط زر **استخراج البيانات بالنموذج**. هذه المرحلة تستخدم `scripts/model_enrich.py` في فرع مكتبة الاستخراج، وتكتب نتائج JSONL في `assets/fashion-model-library/extracted-knowledge/structured-pages/`. ابدأ بعينة صغيرة من الطرفية قبل تشغيل كل الكتب:
 ```bash
-python scripts/model_enrich.py --book-id BOOK_ID --max-pages 2
+python "$EXTRACTION_ROOT/scripts/model_enrich.py" --book-id BOOK_ID --max-pages 2
 ```
 متغيرات النموذج:
 - `LOCAL_MODEL_BASE_URL`: افتراضيًا `http://127.0.0.1:8080/v1`.
