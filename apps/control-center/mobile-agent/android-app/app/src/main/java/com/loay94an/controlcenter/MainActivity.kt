@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Base64
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.ValueCallback
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebSettings
@@ -45,6 +47,12 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class MainActivity : ComponentActivity() {
+    private var studioFileCallback: ValueCallback<Array<Uri>>? = null
+    private val studioPdfPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val callback = studioFileCallback
+        studioFileCallback = null
+        callback?.onReceiveValue(uri?.let { arrayOf(it) })
+    }
     private var sharedContent by mutableStateOf("")
     private var incomingStatus by mutableStateOf("جاهز")
 
@@ -333,7 +341,7 @@ private fun ControlCenterScreen(
                         settings.domStorageEnabled = true
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                         settings.allowFileAccess = false
-                        settings.allowContentAccess = false
+                        settings.allowContentAccess = true
                         settings.javaScriptCanOpenWindowsAutomatically = false
                         addJavascriptInterface(object {
                             @JavascriptInterface
@@ -341,6 +349,24 @@ private fun ControlCenterScreen(
                             @JavascriptInterface
                             fun setToken(value: String) { TokenVault.write(activity, value.take(512)) }
                         }, "AndroidSecureStore")
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onShowFileChooser(
+                                webView: WebView?,
+                                filePathCallback: ValueCallback<Array<Uri>>?,
+                                fileChooserParams: FileChooserParams?
+                            ): Boolean {
+                                if (filePathCallback == null) return false
+                                this@MainActivity.studioFileCallback?.onReceiveValue(null)
+                                this@MainActivity.studioFileCallback = filePathCallback
+                                return try {
+                                    this@MainActivity.studioPdfPicker.launch(arrayOf("application/pdf"))
+                                    true
+                                } catch (_: Exception) {
+                                    this@MainActivity.studioFileCallback = null
+                                    false
+                                }
+                            }
+                        }
                         webViewClient = object : WebViewClientCompat() {
                             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
                                 request?.url?.let { assetLoader.shouldInterceptRequest(it) }
