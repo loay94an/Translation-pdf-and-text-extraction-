@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def main():
-    parser = argparse.ArgumentParser(description="استخراج PDF صفحة بصفحة مع TXT وHTML")
+    parser = argparse.ArgumentParser(description="استخراج PDF صفحة بصفحة مع TXT وHTML وOCR اختياري")
     parser.add_argument("pdf", help="مسار ملف PDF")
     parser.add_argument("--output-dir", help="مجلد الإخراج (الافتراضي بجانب PDF)")
     parser.add_argument("--prefix", help="بادئة أسماء الملفات")
@@ -41,9 +41,9 @@ def main():
     chunks = result.stdout.split("\f")
     if chunks and not chunks[-1].strip():
         chunks.pop()
-
     page_texts = [chunk.strip() for chunk in chunks]
     ocr_pages = []
+
     if args.ocr_empty_pages:
         if not shutil.which("pdftoppm") or not shutil.which("tesseract"):
             raise SystemExit("OCR يتطلب pdftoppm وtesseract. ثبتهما عبر: pkg install poppler tesseract")
@@ -70,16 +70,19 @@ def main():
                 else:
                     ocr_pages.append({"page": page_number, "status": "ocr_failed", "error": ocr.stderr.strip()})
 
+    ocr_completed = {item["page"] for item in ocr_pages if item["status"] == "ocr_completed"}
     records = []
     for number, page_text in enumerate(page_texts, 1):
+        records.append({
             "page": number,
             "source_pdf": pdf.name,
             "text": page_text,
             "characters": len(page_text),
-            "review_status": "machine_extracted_unverified",\n            "extraction_method": "pdftotext_or_ocr" if number in [item["page"] for item in ocr_pages if item["status"] == "ocr_completed"] else "pdftotext"
+            "review_status": "machine_extracted_unverified",
+            "extraction_method": "tesseract_ocr" if number in ocr_completed else "pdftotext"
         })
         (out / f"{prefix}_page_{number:04d}.txt").write_text(
-            f"الصفحة {number} من {len(chunks)}\n\n{page_text}\n", encoding="utf-8"
+            f"الصفحة {number} من {len(page_texts)}\n\n{page_text}\n", encoding="utf-8"
         )
 
     jsonl = out / f"{prefix}.jsonl"
@@ -122,7 +125,8 @@ def main():
         "pdf": str(pdf),
         "pages": len(records),
         "pages_with_text": sum(bool(record["text"]) for record in records),
-        "empty_pages": [record["page"] for record in records if not record["text"]],\n        "ocr_pages": ocr_pages,
+        "empty_pages": [record["page"] for record in records if not record["text"]],
+        "ocr_pages": ocr_pages,
         "outputs": {
             "jsonl": str(jsonl),
             "txt": str(txt),
