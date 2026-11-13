@@ -234,7 +234,7 @@ const server = http.createServer(async (req, res) => {
         if (signature.length < 5) signature = Buffer.concat([signature, chunk.subarray(0, 5 - signature.length)]);
         if (!output.write(chunk)) await new Promise(resolve => output.once('drain', resolve));
       }
-      await new Promise((resolve, reject) => output.end(error => error ? reject(error) : resolve()));
+      await new Promise((resolve, reject) => { output.once('error', reject); output.end(resolve); });
       if (signature.toString('ascii') !== '%PDF-') throw new Error('الملف المحدد ليس ملف PDF صالحًا');
       return send(res, 201, { ok: true, path: 'imports/' + path.basename(target), size });
     } catch (error) {
