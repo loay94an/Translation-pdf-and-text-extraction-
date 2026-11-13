@@ -242,11 +242,36 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { ok: false, error: error.message || 'invalid job request' });
     }
   }
-  if (req.method === 'GET' && url.pathname.startsWith('/api/jobs/')) {
-    const id = url.pathname.slice('/api/jobs/'.length);
+  if (req.method === 'GET' && url.pathname === '/api/jobs') {
+    const items = [...jobs.values()].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 100)
+      .map(job => ({ id: job.id, status: job.status, exitCode: job.exitCode, startedAt: job.startedAt,
+        finishedAt: job.finishedAt, cwd: job.cwd, progress: job.progress || null }));
+    return send(res, 200, { ok: true, jobs: items });
+  }
+  if (url.pathname.startsWith('/api/jobs/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    const id = parts[2];
     const job = jobs.get(id);
-    if (!job) return send(res, 404, { ok: false, error: 'job not found in this agent session' });
-    return send(res, 200, { ok: true, job: { id: job.id, status: job.status, exitCode: job.exitCode, startedAt: job.startedAt, finishedAt: job.finishedAt, timedOut: !!job.timedOut, cwd: job.cwd, output: job.output } });
+    if (!job) return send(res, 404, { ok: false, error: 'job not found' });
+    if (req.method === 'POST' && parts[3] === 'cancel') {
+      if (job.status !== 'running' || !job.child) return send(res, 409, { ok: false, error: 'job is not running in this agent process' });
+      job.status = 'cancelling'; persistJob(job); job.child.kill('SIGTERM');
+      setTimeout(() => { if (job.child && job.status === 'cancelling') job.child.kill('SIGKILL'); }, 4000).unref();
+      return send(res, 202, { ok: true, job: { id, status: job.status } });
+    }
+    if (req.method === 'POST' && parts[3] === 'retry') {
+      if (!['failed', 'timed_out', 'interrupted'].includes(job.status)) return send(res, 409, { ok: false, error: 'only failed or interrupted jobs can be retried' });
+      try {
+        const cwd = resolveCwd(path.relative(WORKSPACE, job.cwd));
+        const nextJob = startJob(job.command, cwd, MAX_JOB_MS);
+        return send(res, 202, { ok: true, job: { id: nextJob.id, status: nextJob.status, startedAt: nextJob.startedAt, retryOf: id } });
+      } catch (error) { return send(res, 409, { ok: false, error: error.message }); }
+    }
+    if (req.method === 'GET' && parts.length === 3) {
+      return send(res, 200, { ok: true, job: { id: job.id, status: job.status, exitCode: job.exitCode,
+        startedAt: job.startedAt, finishedAt: job.finishedAt, timedOut: !!job.timedOut, cwd: job.cwd,
+        progress: job.progress || null, output: job.output, command: job.command } });
+    }
   }
   if (req.method === 'POST' && url.pathname === '/api/exec') {
     try {
