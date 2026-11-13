@@ -8,6 +8,7 @@ on:
       - 'apps/control-center/public/studio.html'
       - 'apps/control-center/mobile-agent/check-studio.mjs'
       - 'extraction/scripts/extract_single_pdf.py'
+      - 'extraction/scripts/translate_extracted_pages.py'
       - '.github/workflows/mobile-terminal-check.yml'
   pull_request:
     paths:
@@ -29,7 +30,7 @@ jobs:
         with:
           node-version: 22
       - name: Check PDF page exporter syntax
-        run: python -m py_compile extraction/scripts/extract_single_pdf.py
+        run: python -m py_compile extraction/scripts/extract_single_pdf.py extraction/scripts/translate_extracted_pages.py
       - name: Check Termux agent syntax
         run: node --check apps/control-center/mobile-agent/agent.mjs
       - name: Check professional studio dashboard
