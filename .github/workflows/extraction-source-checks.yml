@@ -22,6 +22,10 @@ jobs:
           python-version: '3.12'
       - name: Compile imported extraction modules
         run: python -m compileall -q extraction
+      - name: Run extraction parser and resume tests
+        env:
+          PYTHONPATH: extraction
+        run: python -m unittest discover -s extraction/tests -v
       - name: Validate extraction source inventory
         run: |
           test -f extraction/extract_pages.py
