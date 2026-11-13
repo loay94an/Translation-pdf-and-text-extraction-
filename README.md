@@ -1,11 +1,10 @@
-<div align="center">
+# مركز PDF والاستخراج والتحكم المركزي
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+هذا المستودع يجمع مشروعين مترابطين:
 
-  <h1>Built with AI Studio</h2>
+- **مركز التحكم لأندرويد وTermux:** `apps/control-center/`
+- **محركات استخراج PDF وOCR والبيانات المنظمة:** `extraction/`
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+ابدأ من [دليل المشاريع بالعربية](PROJECTS-INDEX-AR.md).
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+> تنبيه: المستودع يحتوي الآن على ملفات المصدر التي نُقلت من فروع التطوير. لم يكتمل بعد استيراد كل ملفات الواجهة الأصلية غير المعدّلة، ولم يتم اعتماد بناء أو نشر الموقع على أنه ناجح. لا توجد كتب PDF أو صور صفحات أو نصوص كتب كاملة في هذا المستودع.
