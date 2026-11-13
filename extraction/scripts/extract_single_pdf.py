@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -15,6 +16,9 @@ def main():
     parser.add_argument("pdf", help="مسار ملف PDF")
     parser.add_argument("--output-dir", help="مجلد الإخراج (الافتراضي بجانب PDF)")
     parser.add_argument("--prefix", help="بادئة أسماء الملفات")
+    parser.add_argument("--ocr-empty-pages", action="store_true", help="تشغيل Tesseract للصفحات التي لا تحتوي نصًا")
+    parser.add_argument("--ocr-lang", default="ara+eng", help="لغات Tesseract، الافتراضي ara+eng")
+    parser.add_argument("--dpi", type=int, default=220, help="دقة تحويل صفحات OCR")
     args = parser.parse_args()
 
     pdf = Path(args.pdf).expanduser().resolve()
@@ -38,15 +42,41 @@ def main():
     if chunks and not chunks[-1].strip():
         chunks.pop()
 
+    page_texts = [chunk.strip() for chunk in chunks]
+    ocr_pages = []
+    if args.ocr_empty_pages:
+        if not shutil.which("pdftoppm") or not shutil.which("tesseract"):
+            raise SystemExit("OCR يتطلب pdftoppm وtesseract. ثبتهما عبر: pkg install poppler tesseract")
+        with tempfile.TemporaryDirectory(prefix="pdf-ocr-") as temp_dir:
+            for page_number, existing_text in enumerate(page_texts, 1):
+                if existing_text:
+                    continue
+                image_base = Path(temp_dir) / f"page-{page_number:05d}"
+                render = subprocess.run(
+                    ["pdftoppm", "-f", str(page_number), "-l", str(page_number), "-singlefile", "-png", "-r", str(args.dpi), str(pdf), str(image_base)],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace"
+                )
+                image_path = image_base.with_suffix(".png")
+                if render.returncode or not image_path.is_file():
+                    ocr_pages.append({"page": page_number, "status": "render_failed", "error": render.stderr.strip()})
+                    continue
+                ocr = subprocess.run(
+                    ["tesseract", str(image_path), "stdout", "-l", args.ocr_lang, "--psm", "3"],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace"
+                )
+                if ocr.returncode == 0:
+                    page_texts[page_number - 1] = ocr.stdout.strip()
+                    ocr_pages.append({"page": page_number, "status": "ocr_completed" if ocr.stdout.strip() else "ocr_empty"})
+                else:
+                    ocr_pages.append({"page": page_number, "status": "ocr_failed", "error": ocr.stderr.strip()})
+
     records = []
-    for number, chunk in enumerate(chunks, 1):
-        page_text = chunk.strip()
-        records.append({
+    for number, page_text in enumerate(page_texts, 1):
             "page": number,
             "source_pdf": pdf.name,
             "text": page_text,
             "characters": len(page_text),
-            "review_status": "machine_extracted_unverified"
+            "review_status": "machine_extracted_unverified",\n            "extraction_method": "pdftotext_or_ocr" if number in [item["page"] for item in ocr_pages if item["status"] == "ocr_completed"] else "pdftotext"
         })
         (out / f"{prefix}_page_{number:04d}.txt").write_text(
             f"الصفحة {number} من {len(chunks)}\n\n{page_text}\n", encoding="utf-8"
@@ -92,7 +122,7 @@ def main():
         "pdf": str(pdf),
         "pages": len(records),
         "pages_with_text": sum(bool(record["text"]) for record in records),
-        "empty_pages": [record["page"] for record in records if not record["text"]],
+        "empty_pages": [record["page"] for record in records if not record["text"]],\n        "ocr_pages": ocr_pages,
         "outputs": {
             "jsonl": str(jsonl),
             "txt": str(txt),
