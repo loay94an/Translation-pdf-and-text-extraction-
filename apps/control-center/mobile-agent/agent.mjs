@@ -13,7 +13,8 @@ const PORT = Number(process.env.LOCAL_AGENT_PORT || 8765);
 const HOME = process.env.HOME || os.homedir();
 const WORKSPACE = path.resolve(process.env.LOCAL_AGENT_WORKSPACE || path.join(HOME, 'workspace'));
 const CONFIG_DIR = path.join(HOME, '.config', 'mobile-terminal-bridge');
-const TOKEN_FILE = path.join(CONFIG_DIR, 'token');\nconst GITHUB_TOKEN_FILE = path.join(CONFIG_DIR, 'github-token');
+const TOKEN_FILE = path.join(CONFIG_DIR, 'token');
+const GITHUB_TOKEN_FILE = path.join(CONFIG_DIR, 'github-token');
 const BROWSER_CONTEXT_FILE = path.join(CONFIG_DIR, 'browser-context.json');
 const MAX_BODY = 8 * 1024 * 1024;
 const MAX_OUTPUT = 128 * 1024;
@@ -163,7 +164,7 @@ const server = http.createServer(async (req, res) => {
       const response=await fetch('https://api.github.com/user',{headers:{Authorization:'Bearer '+ghToken,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(15000)});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)return send(res,401,{ok:false,error:data.message||'رفض GitHub الرمز أو صلاحياته'});
-      fs.writeFileSync(GITHUB_TOKEN_FILE,ghToken+'\\n',{mode:0o600});try{fs.chmodSync(GITHUB_TOKEN_FILE,0o600);}catch{}
+      fs.writeFileSync(GITHUB_TOKEN_FILE,ghToken+'\n',{mode:0o600});try{fs.chmodSync(GITHUB_TOKEN_FILE,0o600);}catch{}
       return send(res,200,{ok:true,login:data.login});
     }catch(error){return send(res,400,{ok:false,error:error.message||'تعذر ربط GitHub'});}
   }
@@ -187,7 +188,7 @@ const server = http.createServer(async (req, res) => {
         const data=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
         if(Array.isArray(data)||data.type!=='file'||data.size>1024*1024)throw new Error('القراءة تدعم الملفات النصية حتى 1MB فقط');
         if(data.encoding!=='base64'||!data.content)throw new Error('تعذر فك ترميز الملف أو الملف ليس نصيًا');
-        const content=Buffer.from(data.content.replace(/\\n/g,''),'base64').toString('utf8');
+        const content=Buffer.from(data.content.replace(/\n/g,''),'base64').toString('utf8');
         return send(res,200,{ok:true,path:data.path,sha:data.sha,size:data.size,content});
       }
 \n      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
