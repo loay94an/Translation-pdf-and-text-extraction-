@@ -4,7 +4,7 @@ on:
     branches: [main]
     paths:
       - 'apps/control-center/mobile-agent/**'
-      - 'apps/control-center/public/mobile-terminal.html'
+      - 'apps/control-center/public/mobile-terminal.html'\n      - 'extraction/scripts/extract_single_pdf.py'
       - '.github/workflows/mobile-terminal-check.yml'
   pull_request:
     paths:
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check Termux agent syntax
+      - name: Check PDF page exporter syntax\n        run: python -m py_compile extraction/scripts/extract_single_pdf.py\n      - name: Check Termux agent syntax
         run: node --check apps/control-center/mobile-agent/agent.mjs
       - name: Check Android project files exist
         run: |
@@ -31,4 +31,4 @@ jobs:
       - name: Check extraction controls reference imported engine paths
         run: |
           grep -q 'EXTRACTION_ROOT' apps/control-center/mobile-agent/start.sh
-          grep -q 'EXTRACTION_ROOT' apps/control-center/public/mobile-terminal.html
+          grep -q 'EXTRACTION_ROOT' apps/control-center/public/mobile-terminal.html\n          grep -q '/api/extracted-pages' apps/control-center/public/mobile-terminal.html\n          grep -q '/api/extracted-pages' apps/control-center/mobile-agent/agent.mjs
