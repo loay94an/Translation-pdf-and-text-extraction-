@@ -35,9 +35,9 @@ def split_text(text: str, limit: int) -> list[str]:
     chunks = []
     remaining = text
     while len(remaining) > limit:
-        cut = remaining.rfind("\\n\\n", 0, limit)
+        cut = remaining.rfind("\n\n", 0, limit)
         if cut < limit // 3:
-            cut = remaining.rfind("\\n", 0, limit)
+            cut = remaining.rfind("\n", 0, limit)
         if cut < limit // 3:
             cut = remaining.rfind(" ", 0, limit)
         if cut < limit // 3:
