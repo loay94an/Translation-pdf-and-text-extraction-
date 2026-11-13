@@ -21,7 +21,8 @@ const MAX_OUTPUT = 128 * 1024;
 const TIMEOUT_MS = 120_000;
 const JOBS_DIR = path.join(CONFIG_DIR, 'jobs');
 const MAX_JOB_MS = 6 * 60 * 60 * 1000;
-const MODEL_BASE_URL = (process.env.LOCAL_MODEL_BASE_URL || 'http://127.0.0.1:8080/v1').replace(/\/$/, '');
+const MODEL_CONFIG_FILE = path.join(CONFIG_DIR, 'model-config.json');
+let MODEL_BASE_URL = (process.env.LOCAL_MODEL_BASE_URL || (() => { try { return JSON.parse(fs.readFileSync(MODEL_CONFIG_FILE, 'utf8')).endpoint; } catch { return 'http://127.0.0.1:8080/v1'; } })()).replace(/\/$/, '');
 const ALLOWED_ORIGINS = new Set((process.env.LOCAL_AGENT_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean));
 const jobs = new Map();
 fs.mkdirSync(JOBS_DIR, { recursive: true, mode: 0o700 });
@@ -143,7 +144,7 @@ const server = http.createServer(async (req, res) => {
       'Access-Control-Allow-Origin': req.headers.origin || 'null',
       'Vary': 'Origin',
       'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization,Content-Type',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-File-Name',
       'Access-Control-Allow-Private-Network': 'true',
       'Access-Control-Max-Age': '600',
     });
@@ -218,6 +219,51 @@ const server = http.createServer(async (req, res) => {
     }catch(error){return send(res,400,{ok:false,error:error.message||'GitHub request failed'});}
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/files/pdf') {
+    const uploadDir = path.join(WORKSPACE, 'imports');
+    const target = path.join(uploadDir, crypto.randomUUID() + '.pdf');
+    let size = 0;
+    let signature = Buffer.alloc(0);
+    let output;
+    try {
+      fs.mkdirSync(uploadDir, { recursive: true });
+      output = fs.createWriteStream(target, { flags: 'wx', mode: 0o600 });
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 1024 * 1024 * 1024) throw new Error('حجم PDF يتجاوز الحد المسموح وهو 1GB');
+        if (signature.length < 5) signature = Buffer.concat([signature, chunk.subarray(0, 5 - signature.length)]);
+        if (!output.write(chunk)) await new Promise(resolve => output.once('drain', resolve));
+      }
+      await new Promise((resolve, reject) => output.end(error => error ? reject(error) : resolve()));
+      if (signature.toString('ascii') !== '%PDF-') throw new Error('الملف المحدد ليس ملف PDF صالحًا');
+      return send(res, 201, { ok: true, path: 'imports/' + path.basename(target), size });
+    } catch (error) {
+      if (output && !output.closed) output.destroy();
+      try { fs.unlinkSync(target); } catch {}
+      return send(res, 400, { ok: false, error: error.message || 'تعذر استيراد PDF' });
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/model-config') {
+    return send(res, 200, { ok: true, endpoint: MODEL_BASE_URL });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/model-config') {
+    try {
+      const body = await readBody(req);
+      const parsed = new URL(String(body.endpoint || '').trim());
+      const host = parsed.hostname.toLowerCase();
+      const localHost = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' ||
+        /^10(?:\.\d{1,3}){3}$/.test(host) || /^192\.168(?:\.\d{1,3}){2}$/.test(host) ||
+        /^172\.(1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}$/.test(host);
+      if (!['http:', 'https:'].includes(parsed.protocol) || !localHost || parsed.username || parsed.password)
+        throw new Error('استخدم عنوان خادم محلي أو داخل الشبكة الخاصة، مثل http://127.0.0.1:8080/v1');
+      MODEL_BASE_URL = parsed.toString().replace(/\/$/, '');
+      fs.writeFileSync(MODEL_CONFIG_FILE, JSON.stringify({ endpoint: MODEL_BASE_URL }, null, 2), { mode: 0o600 });
+      try { fs.chmodSync(MODEL_CONFIG_FILE, 0o600); } catch {}
+      return send(res, 200, { ok: true, endpoint: MODEL_BASE_URL });
+    } catch (error) {
+      return send(res, 400, { ok: false, error: error.message || 'عنوان النموذج غير صالح' });
+    }
+  }
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
   }
@@ -303,7 +349,7 @@ const server = http.createServer(async (req, res) => {
       if (process.env.LOCAL_MODEL_API_KEY) headers.Authorization = 'Bearer ' + process.env.LOCAL_MODEL_API_KEY;
       const response = await fetch(MODEL_BASE_URL + '/models', { headers, signal: AbortSignal.timeout(5000) });
       const data = await response.json().catch(() => ({}));
-      return send(res, response.ok ? 200 : 502, { ok: response.ok, endpoint: MODEL_BASE_URL, status: response.status, models: data.data || [], error: response.ok ? undefined : (data.error?.message || 'model server returned an error') });
+      return send(res, response.ok ? 200 : 502, { ok: response.ok, endpoint: MODEL_BASE_URL, status: response.status, models: (Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : []).map(item => ({ id: String(item.id || item.name || '') })).filter(item => item.id), error: response.ok ? undefined : (data.error?.message || 'model server returned an error') });
     } catch (error) {
       return send(res, 502, { ok: false, endpoint: MODEL_BASE_URL, error: error.message || 'local model is unreachable' });
     }
