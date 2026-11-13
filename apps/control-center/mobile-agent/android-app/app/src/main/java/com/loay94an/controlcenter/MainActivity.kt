@@ -53,6 +53,18 @@ class MainActivity : ComponentActivity() {
         studioFileCallback = null
         callback?.onReceiveValue(uri?.let { arrayOf(it) })
     }
+    fun openStudioPdfPicker(callback: ValueCallback<Array<Uri>>?): Boolean {
+        if (callback == null) return false
+        studioFileCallback?.onReceiveValue(null)
+        studioFileCallback = callback
+        return try {
+            studioPdfPicker.launch(arrayOf("application/pdf"))
+            true
+        } catch (_: Exception) {
+            studioFileCallback = null
+            false
+        }
+    }
     private var sharedContent by mutableStateOf("")
     private var incomingStatus by mutableStateOf("جاهز")
 
@@ -294,7 +306,7 @@ private fun ControlCenterScreen(
 ) {
     var content by remember { mutableStateOf(initialContent) }
     var showStudio by remember { mutableStateOf(false) }
-    val activity = LocalContext.current as ComponentActivity
+    val activity = LocalContext.current as MainActivity
     var token by remember { mutableStateOf(initialToken) }
     var url by remember { mutableStateOf("https://www.google.com") }
     var command by remember { mutableStateOf("pwd && ls -la") }
@@ -355,16 +367,7 @@ private fun ControlCenterScreen(
                                 filePathCallback: ValueCallback<Array<Uri>>?,
                                 fileChooserParams: FileChooserParams?
                             ): Boolean {
-                                if (filePathCallback == null) return false
-                                this@MainActivity.studioFileCallback?.onReceiveValue(null)
-                                this@MainActivity.studioFileCallback = filePathCallback
-                                return try {
-                                    this@MainActivity.studioPdfPicker.launch(arrayOf("application/pdf"))
-                                    true
-                                } catch (_: Exception) {
-                                    this@MainActivity.studioFileCallback = null
-                                    false
-                                }
+                                return activity.openStudioPdfPicker(filePathCallback)
                             }
                         }
                         webViewClient = object : WebViewClientCompat() {
