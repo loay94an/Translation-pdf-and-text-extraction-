@@ -1,0 +1,31 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.keystore
+
+# Node / web build
+node_modules/
+apps/control-center/node_modules/
+apps/control-center/dist/
+apps/control-center/.env
+apps/control-center/.env.*
+
+# Android build outputs
+**/.gradle/
+**/build/
+*.apk
+*.aab
+
+# Private source books and raw OCR outputs
+**/*.pdf
+**/*.PDF
+assets/fashion-model-library/
+extracted-knowledge/
+structured-pages/
+page-images/
+ocr-output/
+raw-ocr/
