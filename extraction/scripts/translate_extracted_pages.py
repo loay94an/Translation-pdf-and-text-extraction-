@@ -31,6 +31,26 @@ def detect_language(text: str) -> str:
         return "auto"
 
 
+def split_text(text: str, limit: int) -> list[str]:
+    chunks = []
+    remaining = text
+    while len(remaining) > limit:
+        cut = remaining.rfind("\\n\\n", 0, limit)
+        if cut < limit // 3:
+            cut = remaining.rfind("\\n", 0, limit)
+        if cut < limit // 3:
+            cut = remaining.rfind(" ", 0, limit)
+        if cut < limit // 3:
+            cut = limit
+        else:
+            cut += 1
+        chunks.append(remaining[:cut].strip())
+        remaining = remaining[cut:].strip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
 def request_translation(base_url: str, model: str, api_key: str, source: str, target: str,
                         text: str, temperature: float, max_tokens: int, retries: int) -> str:
     language_instruction = "Detect the source language automatically." if source == "auto" else f"The source language is {source}."
@@ -88,7 +108,7 @@ def main() -> None:
     parser.add_argument("--image-mode", choices=("none", "page", "extracted"), default="none")
     parser.add_argument("--html-content", choices=("both", "translation", "original"), default="both")
     parser.add_argument("--temperature", type=float, default=0.1)
-    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--max-tokens", type=int, default=512)\n    parser.add_argument("--chunk-chars", type=int, default=1200)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--dpi", type=int, default=150)
     args = parser.parse_args()
@@ -214,7 +234,7 @@ def main() -> None:
     html_path.write_text(html_doc, encoding="utf-8")
     report = {"input": str(source_file), "pages": total, "translated": sum(x["status"] == "completed" for x in translated),
               "failed": failures, "source_language": args.source_language, "target_language": args.target_language,
-              "model": args.model, "image_mode": args.image_mode, "html_content": args.html_content,
+              "model": args.model, "image_mode": args.image_mode, "html_content": args.html_content, "chunk_chars": args.chunk_chars, "max_tokens": args.max_tokens,
               "outputs": {"jsonl": str(jsonl), "txt": str(txt), "html": str(html_path), "images": str(assets) if args.image_mode != "none" else None}}
     (out / f"{prefix}_translation-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     emit({"event": "completed", "stage": "finished", "completed": total, "total": total, "percent": 100,
