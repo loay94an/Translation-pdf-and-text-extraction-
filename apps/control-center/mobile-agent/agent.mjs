@@ -180,7 +180,17 @@ const server = http.createServer(async (req, res) => {
         const data=await gh('/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member');
         return send(res,200,{ok:true,repositories:data.map(r=>({full_name:r.full_name,private:r.private,default_branch:r.default_branch,permissions:r.permissions||{}}))});
       }
-      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
+
+      if(req.method==='GET'&&url.pathname==='/api/github/read'){
+        const repo=url.searchParams.get('repo')||'',branch=url.searchParams.get('branch')||'main',filePath=url.searchParams.get('path')||'';
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!filePath||filePath.startsWith('/')||filePath.split('/').some(p=>!p||p==='..'))throw new Error('المستودع أو مسار الملف غير صالح');
+        const data=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
+        if(Array.isArray(data)||data.type!=='file'||data.size>1024*1024)throw new Error('القراءة تدعم الملفات النصية حتى 1MB فقط');
+        if(data.encoding!=='base64'||!data.content)throw new Error('تعذر فك ترميز الملف أو الملف ليس نصيًا');
+        const content=Buffer.from(data.content.replace(/\\n/g,''),'base64').toString('utf8');
+        return send(res,200,{ok:true,path:data.path,sha:data.sha,size:data.size,content});
+      }
+\n      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
         const repo=url.searchParams.get('repo')||'',branch=url.searchParams.get('branch')||'main',dir=url.searchParams.get('path')||'';
         if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('اسم المستودع غير صالح');
         const data=await gh('/repos/'+repo+'/contents/'+dir.split('/').filter(Boolean).map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
