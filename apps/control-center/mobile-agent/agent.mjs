@@ -23,6 +23,23 @@ const MODEL_BASE_URL = (process.env.LOCAL_MODEL_BASE_URL || 'http://127.0.0.1:80
 const ALLOWED_ORIGINS = new Set((process.env.LOCAL_AGENT_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean));
 const jobs = new Map();
 fs.mkdirSync(JOBS_DIR, { recursive: true, mode: 0o700 });
+function persistJob(job) {
+  const snapshot = { id: job.id, command: job.command, cwd: job.cwd, status: job.status,
+    exitCode: job.exitCode, startedAt: job.startedAt, finishedAt: job.finishedAt,
+    timedOut: !!job.timedOut, progress: job.progress || null, logPath: job.logPath };
+  fs.writeFileSync(path.join(JOBS_DIR, job.id + '.json'), JSON.stringify(snapshot, null, 2), { mode: 0o600 });
+}
+for (const name of fs.readdirSync(JOBS_DIR).filter(name => name.endsWith('.json'))) {
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(JOBS_DIR, name), 'utf8'));
+    if (!saved.id || !saved.command || !saved.logPath) continue;
+    const output = fs.existsSync(saved.logPath) ? fs.readFileSync(saved.logPath, 'utf8').slice(-MAX_OUTPUT) : '';
+    const job = { ...saved, output, child: null };
+    if (job.status === 'running') { job.status = 'interrupted'; job.finishedAt = new Date().toISOString(); }
+    jobs.set(job.id, job);
+    persistJob(job);
+  } catch {}
+}
 
 function originAllowed(origin) {
   if (!origin) return true;
@@ -39,7 +56,7 @@ function startJob(command, cwd, timeoutMs) {
     env: { ...process.env, TERM: 'dumb', PAGER: 'cat', GIT_PAGER: 'cat' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const job = { id, command, cwd, status: 'running', exitCode: null, startedAt: new Date().toISOString(), finishedAt: null, output: '', logPath, child };
+  const job = { id, command, cwd, status: 'running', exitCode: null, startedAt: new Date().toISOString(), finishedAt: null, output: '', logPath, child, progress: { stage: 'starting', completed: 0, total: 0, percent: 0 } };
   const append = chunk => {
     const value = chunk.toString();
     log.write(value);
@@ -54,14 +71,15 @@ function startJob(command, cwd, timeoutMs) {
   }, Math.min(Math.max(timeoutMs || TIMEOUT_MS, 1000), MAX_JOB_MS));
   child.on('error', error => {
     job.status = 'failed'; job.exitCode = 1; job.output += '\n' + error.message;
-    job.finishedAt = new Date().toISOString(); clearTimeout(timer); log.end();
+    job.finishedAt = new Date().toISOString(); clearTimeout(timer); log.end(); persistJob(job);
   });
   child.on('close', code => {
     job.status = job.timedOut ? 'timed_out' : (code === 0 ? 'completed' : 'failed');
     job.exitCode = code; job.finishedAt = new Date().toISOString();
-    clearTimeout(timer); log.end();
+    clearTimeout(timer); if (pending) { log.write(pending); job.output = (job.output + pending).slice(-MAX_OUTPUT); pending = ''; } log.end(); persistJob(job);
   });
   jobs.set(id, job);
+  persistJob(job);
   return job;
 }
 
@@ -128,7 +146,7 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url || '/', 'http://127.0.0.1');
   if (req.method === 'GET' && url.pathname === '/api/health') {
-    return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size });
+    return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
   }
   if (req.method === 'GET' && url.pathname === '/api/providers') {
     const providers = [
