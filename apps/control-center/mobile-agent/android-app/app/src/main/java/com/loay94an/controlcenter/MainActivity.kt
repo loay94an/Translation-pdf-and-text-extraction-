@@ -283,6 +283,16 @@ private fun ControlCenterScreen(
     var output by remember { mutableStateOf("") }
     var status by remember { mutableStateOf(initialStatus) }
     var busy by remember { mutableStateOf(false) }
+    var pendingQuickCommand by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val quickCommands = listOf(
+        "فحص الجهاز" to "pwd && uname -a && df -h",
+        "عرض الملفات" to "ls -lah",
+        "تحديث Termux" to "pkg update -y",
+        "فحص أدوات PDF وOCR" to "command -v pdftotext; command -v pdftoppm; command -v tesseract; tesseract --list-langs",
+        "فحص Python" to "python --version && python -m pip --version",
+        "فحص النموذج المحلي" to "curl -fsS http://127.0.0.1:8080/v1/models",
+        "فحص Git" to "git status --short --branch"
+    )
     val scope = rememberCoroutineScope()
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
@@ -321,7 +331,16 @@ private fun ControlCenterScreen(
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "جارٍ الاتصال..." else "اختبار الاتصال وحفظه") }
 
-            OutlinedTextField(value = command, onValueChange = { command = it }, label = { Text("أمر Linux") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+            Text("أوامر جاهزة", style = MaterialTheme.typography.titleMedium)
+            Text("اختر أمرًا لتشغيله بعد مراجعة التأكيد. يمكنك أيضًا نسخ الأمر أو تعديله في مربع الطرفية.", style = MaterialTheme.typography.bodySmall)
+            quickCommands.forEach { preset ->
+                OutlinedButton(
+                    enabled = !busy && token.length >= 40,
+                    onClick = { pendingQuickCommand = preset },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(preset.first) }
+            }
+            OutlinedTextField(value = command, onValueChange = { command = it }, label = { Text("أمر Linux — قابل للنسخ والتعديل") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
             Button(enabled = !busy && token.length >= 40 && command.isNotBlank(), onClick = {
                 scope.launch {
                     busy = true
@@ -329,6 +348,18 @@ private fun ControlCenterScreen(
                     busy = false
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text("تنفيذ الأمر في Termux") }
+
+            OutlinedButton(enabled = !busy && token.length >= 40 && output.contains("رمز الخروج:") && !output.contains("رمز الخروج: 0"), onClick = {
+                scope.launch {
+                    busy = true
+                    output = try { onAskLocal(token, "شخّص خطأ الطرفية التالي، واشرح السبب، ثم اقترح إصلاحًا آمنًا وأوامر قابلة للمراجعة. لا تفترض تنفيذ أي أمر.\\n\\n" + output) }
+                    catch (e: Exception) { "تعذر تحليل الخطأ: ${e.message}" }
+                    busy = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("تحليل آخر خطأ بالنموذج المحلي") }
+
+            Text("تخزين الكتب الكبيرة", style = MaterialTheme.typography.titleMedium)
+            Text("لإتاحة مساحة أكبر للكتب، نفّذ مرة واحدة في Termux: termux-setup-storage ثم وافق على الإذن. تُحفظ الكتب المشاركة في Download/ControlCenter ويستخدم الجسر مجلد ControlCenterWorkspace على التخزين المشترك عند توفره. لا يفرض التطبيق حد 50MB، لكن السعة الفعلية تعتمد على مساحة الجهاز.", style = MaterialTheme.typography.bodySmall)
 
             OutlinedButton(onClick = { documentPicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("اختيار ملف أو PDF") }
             OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("النص المستلم أو المستخرج") }, modifier = Modifier.fillMaxWidth(), minLines = 5)
@@ -357,6 +388,25 @@ private fun ControlCenterScreen(
             HorizontalDivider()
             Text("ChatGPT: لم يُفعّل SIWC بعد؛ لا يتم استخدام جلسة Chrome أو استخراج ملفات تعريف الارتباط.")
             Text("ملاحظة: أوامر الطرفية تُنفذ بصلاحيات Termux. لا تنفذ أوامر غير موثوقة.")
+            pendingQuickCommand?.let { preset ->
+                AlertDialog(
+                    onDismissRequest = { pendingQuickCommand = null },
+                    title = { Text("مراجعة الأمر") },
+                    text = { SelectionContainer { Text(preset.second) } },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            pendingQuickCommand = null
+                            command = preset.second
+                            scope.launch {
+                                busy = true
+                                output = try { onRunCommand(token, preset.second) } catch (e: Exception) { "خطأ: ${e.message}" }
+                                busy = false
+                            }
+                        }) { Text("تشغيل") }
+                    },
+                    dismissButton = { TextButton(onClick = { pendingQuickCommand = null }) { Text("إلغاء") } }
+                )
+            }
         }
     }
 }
