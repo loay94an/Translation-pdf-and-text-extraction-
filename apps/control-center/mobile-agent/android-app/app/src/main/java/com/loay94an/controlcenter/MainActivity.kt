@@ -344,7 +344,7 @@ private fun ControlCenterScreen(
                         webViewClient = object : WebViewClientCompat() {
                             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
                                 request?.url?.let { assetLoader.shouldInterceptRequest(it) }
-                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                 val uri = request?.url ?: return false
                                 if (uri.host == "appassets.androidplatform.net") return false
                                 return try {
