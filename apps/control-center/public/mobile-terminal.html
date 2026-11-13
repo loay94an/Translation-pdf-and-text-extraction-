@@ -31,7 +31,7 @@
 </section>
 <section class="card">
 <h2>محركات النماذج والاستخراج</h2>
-<p class="muted">اختبر خادم النموذج المحلي ثم شغّل مهام استخراج PDF في الخلفية. يجب أن تكون مساحة العمل هي نسخة مستودع المكتبة التي تحتوي extract_pages.py وملفات المراجع.</p>
+<p class="muted">اختبر خادم النموذج المحلي ثم شغّل مهام استخراج PDF في الخلفية. يجب أن تكون مساحة العمل هي مجلد مكتبة المراجع الذي يحتوي assets/fashion-model-library وملفات PDF. تُحمّل سكربتات الاستخراج من EXTRACTION_ROOT في نسخة هذا المستودع.</p>
 <div class="actions">
 <button id="checkModel" class="secondary">فحص النموذج المحلي</button>
 <button id="extractText" disabled>استخراج نصوص PDF</button>
@@ -58,10 +58,10 @@ async function checkModel(){ $('modelStatus').textContent='جارٍ فحص خا�
 async function startJob(command,label){if(!connected)return;$('jobStatus').textContent='جارٍ بدء: '+label;$('jobOutput').textContent='';try{const r=await fetch(endpoint()+'/api/jobs',{method:'POST',headers:headers(),body:JSON.stringify({command,cwd:$('cwd').value.trim()||'.',timeoutMs:21600000})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'تعذر بدء المهمة');$('jobStatus').textContent='المهمة تعمل: '+label+' • '+j.job.id;pollJob(j.job.id);}catch(e){$('jobStatus').textContent='فشل بدء المهمة: '+e.message;}}
 async function pollJob(id){try{const r=await fetch(endpoint()+'/api/jobs/'+encodeURIComponent(id),{headers:{'Authorization':'Bearer '+$('token').value.trim()}});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'تعذر قراءة حالة المهمة');$('jobOutput').textContent=j.job.output||'(بانتظار المخرجات)';$('jobStatus').textContent='حالة المهمة: '+j.job.status+' • '+id;if(j.job.status==='running'){setTimeout(()=>pollJob(id),2500);}else{$('jobStatus').textContent+=' • Exit code: '+j.job.exitCode;}}catch(e){$('jobStatus').textContent='تعذر متابعة المهمة: '+e.message;}}
 $('checkModel').addEventListener('click',checkModel);
-$('extractText').addEventListener('click',()=>startJob('python extract_pages.py','استخراج النصوص المضمنة'));
-$('extractOcr').addEventListener('click',()=>startJob('python scripts/analyze_scanned_pages.py --ocr-book-ids 9e05baa19a03,8f82f1798f14,0b057ed28a5f --ocr-threshold 45 --dpi 180 --workers 2','OCR وفهرسة الصور'));
-$('structureData').addEventListener('click',()=>startJob('python scripts/model_enrich.py --max-chars 800 --max-tokens 256','استخراج البيانات المنظمة بالنموذج'));
-$('extractAll').addEventListener('click',()=>startJob('python extract_pages.py && python scripts/analyze_scanned_pages.py --ocr-book-ids 9e05baa19a03,8f82f1798f14,0b057ed28a5f --ocr-threshold 45 --dpi 180 --workers 2','استخراج المكتبة بالكامل'));
+$('extractText').addEventListener('click',()=>startJob('python "$EXTRACTION_ROOT/extract_pages.py"','استخراج النصوص المضمنة'));
+$('extractOcr').addEventListener('click',()=>startJob('python "$EXTRACTION_ROOT/scripts/analyze_scanned_pages.py" --ocr-book-ids 9e05baa19a03,8f82f1798f14,0b057ed28a5f --ocr-threshold 45 --dpi 180 --workers 2','OCR وفهرسة الصور'));
+$('structureData').addEventListener('click',()=>startJob('python "$EXTRACTION_ROOT/scripts/model_enrich.py" --max-chars 800 --max-tokens 256','استخراج البيانات المنظمة بالنموذج'));
+$('extractAll').addEventListener('click',()=>startJob('python "$EXTRACTION_ROOT/extract_pages.py" && python "$EXTRACTION_ROOT/scripts/analyze_scanned_pages.py" --ocr-book-ids 9e05baa19a03,8f82f1798f14,0b057ed28a5f --ocr-threshold 45 --dpi 180 --workers 2','استخراج المكتبة بالكامل'));
 
 $('connect').addEventListener('click',connect);$('run').addEventListener('click',run);$('clear').addEventListener('click',()=>{$('output').textContent='';$('exit').textContent='';});document.querySelectorAll('[data-cmd]').forEach(b=>b.addEventListener('click',()=>{$('command').value=b.dataset.cmd;}));$('command').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();run();}});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('install').hidden=false;});$('install').addEventListener('click',async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('install').hidden=true;});if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/mobile-terminal-sw.js').catch(()=>{}));setStatus(false,'غير متصل','شغّل الخادم المحلي في Termux أولاً');
