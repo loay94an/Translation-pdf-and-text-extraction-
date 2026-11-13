@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080d18">
+<meta name="description" content="واجهة هاتف للاتصال بخادم Termux المحلي وتشغيل أوامر داخل مساحة عمل محددة">
+<link rel="manifest" href="/mobile-terminal.webmanifest">
+<title>الطرفية المحلية للهاتف</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,"Noto Sans Arabic",sans-serif;background:#080d18;color:#e5edf8}*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:radial-gradient(ellipse at top,#14223b,#080d18 55%);padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom)}main{max-width:900px;margin:auto;padding:18px 0 34px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px}.tag{font-size:12px;color:#9fb4d1;border:1px solid #2b3c57;border-radius:99px;padding:6px 10px}.card{background:#101a2b;border:1px solid #24344e;border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 12px 35px #0003}h1{font-size:23px;margin:0 0 6px}h2{font-size:16px;margin:0 0 12px}.muted{color:#9aabc3;font-size:13px;line-height:1.7}.field{display:grid;gap:7px;margin:12px 0}label{font-size:13px;color:#c2d0e3}input,textarea{width:100%;background:#080f1d;color:#f2f6fc;border:1px solid #344763;border-radius:11px;padding:12px;font:14px ui-monospace,monospace;outline:none}input:focus,textarea:focus{border-color:#60a5fa}button{border:0;border-radius:11px;padding:12px 15px;background:#2563eb;color:white;font-weight:700;font-size:14px;min-height:44px}button.secondary{background:#24344e;color:#dce8f8}button:disabled{opacity:.5}.actions{display:flex;gap:8px;flex-wrap:wrap}.status{display:flex;align-items:center;gap:8px;font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:#64748b}.dot.ok{background:#22c55e}.dot.bad{background:#ef4444}textarea#command{min-height:105px;direction:ltr;text-align:left;resize:vertical}.output{direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:#050a12;border:1px solid #26364f;border-radius:12px;padding:14px;min-height:130px;max-height:45vh;overflow:auto;font:13px/1.6 ui-monospace,monospace;color:#cde3ff}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chips button{font-size:12px;padding:8px 10px;min-height:36px}.warning{border-color:#795c25;background:#211b10;color:#f4d69a}.warning .muted{color:#e5c987}a{color:#93c5fd}@media(min-width:700px){main{padding-top:32px}.card{padding:20px}}
+</style>
+</head>
+<body><main>
+<div class="top"><div><h1>طرفية الهاتف المحلية</h1><div class="muted">واجهة ويب تتصل بخادم Termux على هذا الجهاز</div></div><span class="tag">نسخة تجريبية</span></div>
+<section class="card">
+<div class="status"><span id="dot" class="dot"></span><strong id="status">غير متصل</strong><span class="muted" id="statusDetail">شغّل الخادم المحلي في Termux أولاً</span></div>
+<div class="field"><label for="endpoint">عنوان الخادم المحلي</label><input id="endpoint" value="http://127.0.0.1:8765" inputmode="url" autocomplete="url"></div>
+<div class="field"><label for="token">رمز الاتصال المحلي</label><input id="token" type="password" placeholder="ألصق الرمز الذي يظهر في Termux" autocomplete="off"></div>
+<div class="actions"><button id="connect">اتصال وفحص</button><button id="install" class="secondary" hidden>تثبيت التطبيق</button></div>
+</section>
+<section class="card">
+<h2>مساحة العمل</h2>
+<p class="muted">الأوامر تعمل داخل مجلد workspace الذي أنشأه الخادم المحلي. اكتب المسار النسبي لتغيير المجلد.</p>
+<div class="field"><label for="cwd">المجلد النسبي</label><input id="cwd" value="." dir="ltr"></div>
+<div class="field"><label for="command">الأمر</label><textarea id="command" spellcheck="false" placeholder="pwd&#10;ls -la"></textarea></div>
+<div class="chips">
+<button class="secondary" data-cmd="pwd">المجلد الحالي</button><button class="secondary" data-cmd="ls -la">عرض الملفات</button><button class="secondary" data-cmd="git status --short">حالة Git</button><button class="secondary" data-cmd="python --version">Python</button>
+</div>
+<div class="actions" style="margin-top:12px"><button id="run">تشغيل الأمر</button><button id="clear" class="secondary">مسح النتائج</button></div>
+</section>
+<section class="card">
+<h2>محركات النماذج والاستخراج</h2>
+<p class="muted">اختبر خادم النموذج المحلي ثم شغّل مهام استخراج PDF في الخلفية. يجب أن تكون مساحة العمل هي نسخة مستودع المكتبة التي تحتوي extract_pages.py وملفات المراجع.</p>
+<div class="actions">
+<button id="checkModel" class="secondary">فحص النموذج المحلي</button>
+<button id="extractText" disabled>استخراج نصوص PDF</button>
+<button id="extractOcr" disabled>OCR وفهرسة الصور</button>
+<button id="structureData" disabled>استخراج البيانات بالنموذج</button>
+<button id="extractAll" disabled>تشغيل المرحلتين</button>
+</div>
+<p id="modelStatus" class="muted">النموذج الافتراضي: llama.cpp على 127.0.0.1:8080/v1</p>
+<div id="jobStatus" class="muted">لا توجد مهمة قيد التشغيل.</div>
+<div id="jobOutput" class="output">ستظهر هنا مخرجات المهمة الطويلة دون إبقاء طلب المتصفح مفتوحًا.</div>
+</section>
+<section class="card"><h2>النتيجة</h2><div id="output" class="output">جاهز. اتصل بالخادم المحلي أولاً.</div><p id="exit" class="muted"></p></section>
+<section class="card warning"><h2>تنبيه أمان مهم</h2><p class="muted">هذه الواجهة تنفّذ أوامر حقيقية على هاتفك بصلاحيات Termux. لا تشارك رمز الاتصال. لا تشغّل أوامر لا تفهمها. الخادم مربوط بعنوان 127.0.0.1 ولا يُفترض أن يكون مكشوفاً للإنترنت. هذه نسخة تنفيذ أوامر محدودة المدة وليست TTY تفاعلية كاملة؛ أوامر مثل nano وtop والجلسات التفاعلية لا تعمل داخلها.</p></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let connected=false,installPrompt=null;
+const endpoint=()=> $('endpoint').value.trim().replace(/\/$/,'');
+const headers=()=>({'Content-Type':'application/json','Authorization':'Bearer '+$('token').value.trim()});
+function setStatus(ok,msg,detail=''){connected=ok;$('dot').className='dot '+(ok?'ok':'bad');$('status').textContent=msg;$('statusDetail').textContent=detail;$('run').disabled=!ok;['extractText','extractOcr','structureData','extractAll','checkModel'].forEach(id=>$(id).disabled=!ok);}
+async function connect(){setStatus(false,'جارٍ الاتصال...');try{const r=await fetch(endpoint()+'/api/health',{headers:{'Authorization':'Bearer '+$('token').value.trim()}});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'رفض الاتصال');setStatus(true,'متصل بالخادم المحلي',j.platform+' • '+j.workspace);$('output').textContent='تم الاتصال بنجاح. اكتب أمراً للبدء.';}catch(e){setStatus(false,'تعذر الاتصال',e.message+' — تأكد من تشغيل Termux والسماح بالاتصال المحلي.');}}
+async function run(){const command=$('command').value.trim();if(!command)return;$('run').disabled=true;$('output').textContent='جارٍ تنفيذ الأمر...';$('exit').textContent='';try{const r=await fetch(endpoint()+'/api/exec',{method:'POST',headers:headers(),body:JSON.stringify({command,cwd:$('cwd').value.trim()||'.'})});const j=await r.json();if(!r.ok)throw Error(j.error||'فشل التنفيذ');$('output').textContent=(j.stdout||'')+(j.stderr?'\n[stderr]\n'+j.stderr:'')||'(لا يوجد خرج)';$('exit').textContent='Exit code: '+j.exitCode+' • '+j.durationMs+' ms • '+j.cwd;}catch(e){$('output').textContent='ERROR: '+e.message;setStatus(false,'انقطع الاتصال',e.message);}finally{$('run').disabled=!connected;}}
+async function checkModel(){ $('modelStatus').textContent='جارٍ فحص خادم النموذج...';try{const r=await fetch(endpoint()+'/api/models',{headers:{'Authorization':'Bearer '+$('token').value.trim()}});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'النموذج غير متاح');$('modelStatus').textContent='النموذج متصل • '+j.endpoint+' • '+(j.models||[]).map(x=>x.id).join(', ');}catch(e){$('modelStatus').textContent='النموذج غير متصل: '+e.message;}}
+async function startJob(command,label){if(!connected)return;$('jobStatus').textContent='جارٍ بدء: '+label;$('jobOutput').textContent='';try{const r=await fetch(endpoint()+'/api/jobs',{method:'POST',headers:headers(),body:JSON.stringify({command,cwd:$('cwd').value.trim()||'.',timeoutMs:21600000})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'تعذر بدء المهمة');$('jobStatus').textContent='المهمة تعمل: '+label+' • '+j.job.id;pollJob(j.job.id);}catch(e){$('jobStatus').textContent='فشل بدء المهمة: '+e.message;}}
+async function pollJob(id){try{const r=await fetch(endpoint()+'/api/jobs/'+encodeURIComponent(id),{headers:{'Authorization':'Bearer '+$('token').value.trim()}});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'تعذر قراءة حالة المهمة');$('jobOutput').textContent=j.job.output||'(بانتظار المخرجات)';$('jobStatus').textContent='حالة المهمة: '+j.job.status+' • '+id;if(j.job.status==='running'){setTimeout(()=>pollJob(id),2500);}else{$('jobStatus').textContent+=' • Exit code: '+j.job.exitCode;}}catch(e){$('jobStatus').textContent='تعذر متابعة المهمة: '+e.message;}}
+$('checkModel').addEventListener('click',checkModel);
+$('extractText').addEventListener('click',()=>startJob('python extract_pages.py','استخراج النصوص المضمنة'));
+$('extractOcr').addEventListener('click',()=>startJob('python scripts/analyze_scanned_pages.py --ocr-book-ids 9e05baa19a03,8f82f1798f14,0b057ed28a5f --ocr-threshold 45 --dpi 180 --workers 2','OCR وفهرسة الصور'));
+$('structureData').addEventListener('click',()=>startJob('python scripts/model_enrich.py --max-chars 800 --max-tokens 256','استخراج البيانات المنظمة بالنموذج'));
+$('extractAll').addEventListener('click',()=>startJob('python extract_pages.py && python scripts/analyze_scanned_pages.py --ocr-book-ids 9e05baa19a03,8f82f1798f14,0b057ed28a5f --ocr-threshold 45 --dpi 180 --workers 2','استخراج المكتبة بالكامل'));
+
+$('connect').addEventListener('click',connect);$('run').addEventListener('click',run);$('clear').addEventListener('click',()=>{$('output').textContent='';$('exit').textContent='';});document.querySelectorAll('[data-cmd]').forEach(b=>b.addEventListener('click',()=>{$('command').value=b.dataset.cmd;}));$('command').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();run();}});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('install').hidden=false;});$('install').addEventListener('click',async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('install').hidden=true;});if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/mobile-terminal-sw.js').catch(()=>{}));setStatus(false,'غير متصل','شغّل الخادم المحلي في Termux أولاً');
+</script></body></html>
