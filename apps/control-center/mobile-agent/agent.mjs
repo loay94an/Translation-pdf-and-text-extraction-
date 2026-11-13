@@ -311,14 +311,14 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/extracted-pages') {
     try {
       const relative = url.searchParams.get('path') || '';
-      if (!relative || path.isAbsolute(relative) || relative.includes('\\0')) throw new Error('path must be a relative JSONL path inside workspace');
+      if (!relative || path.isAbsolute(relative) || relative.includes('\0')) throw new Error('path must be a relative JSONL path inside workspace');
       const target = path.resolve(WORKSPACE, relative);
       if (target !== WORKSPACE && !target.startsWith(WORKSPACE + path.sep)) throw new Error('path escapes workspace');
       const real = fs.realpathSync(target);
       if (!real.startsWith(WORKSPACE + path.sep) || !real.endsWith('.jsonl')) throw new Error('only JSONL files inside workspace are allowed');
       const stat = fs.statSync(real);
       if (!stat.isFile() || stat.size > 8 * 1024 * 1024) throw new Error('file is missing or exceeds the 8MB preview limit');
-      const lines = fs.readFileSync(real, 'utf8').split(/\\r?\\n/).filter(Boolean);
+      const lines = fs.readFileSync(real, 'utf8').split(/\r?\n/).filter(Boolean);
       if (lines.length > 2500) throw new Error('page count exceeds preview limit (2500)');
       const pages = lines.map((line, index) => {
         const item = JSON.parse(line);
