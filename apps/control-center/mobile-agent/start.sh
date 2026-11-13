@@ -15,6 +15,8 @@ else
   echo "تنبيه: التخزين المشترك غير مهيأ. نفّذ termux-setup-storage واسمح بالوصول لتخزين الكتب الكبيرة."
 fi
 export LOCAL_AGENT_WORKSPACE="${LOCAL_AGENT_WORKSPACE:-$DEFAULT_WORKSPACE}"
+# Permit the bundled Android Studio WebView origin to call the loopback agent.
+export LOCAL_AGENT_ALLOWED_ORIGINS="${LOCAL_AGENT_ALLOWED_ORIGINS:-https://appassets.androidplatform.net}"
 mkdir -p "$LOCAL_AGENT_WORKSPACE" "$HOME/workspace"
 echo "مساحة عمل الكتب والنتائج: $LOCAL_AGENT_WORKSPACE"
 cd "$SCRIPT_DIR"
