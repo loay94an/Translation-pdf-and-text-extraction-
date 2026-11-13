@@ -113,6 +113,8 @@ def main() -> None:
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--dpi", type=int, default=150)
     args = parser.parse_args()
+    if args.chunk_chars < 200 or args.chunk_chars > 12000:
+        raise SystemExit("--chunk-chars يجب أن يكون بين 200 و12000")
 
     source_file = Path(args.input_jsonl).expanduser().resolve()
     if not source_file.is_file():
@@ -169,8 +171,11 @@ def main() -> None:
         result = ""
         status = "completed"
         try:
-            result = request_translation(args.base_url, args.model, api_key, detected, args.target_language,
-                                         original, args.temperature, args.max_tokens, args.retries) if original.strip() else ""
+            result = "\n\n".join(
+                request_translation(args.base_url, args.model, api_key, detected, args.target_language,
+                                    chunk, args.temperature, args.max_tokens, args.retries)
+                for chunk in split_text(original, args.chunk_chars)
+            ) if original.strip() else ""
             if not original.strip():
                 status = "empty_source"
         except Exception as error:
@@ -235,7 +240,7 @@ def main() -> None:
     html_path.write_text(html_doc, encoding="utf-8")
     report = {"input": str(source_file), "pages": total, "translated": sum(x["status"] == "completed" for x in translated),
               "failed": failures, "source_language": args.source_language, "target_language": args.target_language,
-              "model": args.model, "image_mode": args.image_mode, "html_content": args.html_content, "chunk_chars": args.chunk_chars, "max_tokens": args.max_tokens,
+              "model": args.model, "image_mode": args.image_mode, "html_content": args.html_content, "chunk_chars": args.chunk_chars, "max_tokens": args.max_tokens, "chunk_chars": args.chunk_chars, "max_tokens": args.max_tokens,
               "outputs": {"jsonl": str(jsonl), "txt": str(txt), "html": str(html_path), "images": str(assets) if args.image_mode != "none" else None}}
     (out / f"{prefix}_translation-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     emit({"event": "completed", "stage": "finished", "completed": total, "total": total, "percent": 100,
