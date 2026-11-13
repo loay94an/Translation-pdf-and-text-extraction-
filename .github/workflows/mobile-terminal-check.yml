@@ -1,0 +1,34 @@
+name: Mobile terminal agent checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/control-center/mobile-agent/**'
+      - 'apps/control-center/public/mobile-terminal.html'
+      - '.github/workflows/mobile-terminal-check.yml'
+  pull_request:
+    paths:
+      - 'apps/control-center/mobile-agent/**'
+      - 'apps/control-center/public/mobile-terminal.html'
+      - '.github/workflows/mobile-terminal-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Termux agent syntax
+        run: node --check apps/control-center/mobile-agent/agent.mjs
+      - name: Check Android project files exist
+        run: |
+          test -f apps/control-center/mobile-agent/android-app/app/src/main/java/com/loay94an/controlcenter/MainActivity.kt
+          test -f apps/control-center/mobile-agent/android-app/gradle.properties
+      - name: Check extraction controls reference imported engine paths
+        run: |
+          grep -q 'EXTRACTION_ROOT' apps/control-center/mobile-agent/start.sh
+          grep -q 'EXTRACTION_ROOT' apps/control-center/public/mobile-terminal.html
