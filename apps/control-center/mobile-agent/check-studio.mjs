@@ -11,7 +11,7 @@ const script = html.slice(start + 8, end);
 new Function(script);
 const required = [
   'id="pdf"', 'id="ocr"', 'id="models"', 'id="browser"', 'id="terminal"',
-  'id="settings"', 'id="ocrMode"', 'id="minTextChars"', 'id="cancelJob"', 'id="jobsHistory"', '/api/jobs', '/api/chat', '/api/exec', '/api/extracted-pages', 'progress.percent', '/cancel', '/retry',
+  'id="settings"', 'id="ocrMode"', 'id="minTextChars"', 'id="cancelJob"', 'id="jobsHistory"', '/api/jobs', '/api/chat', '/api/exec', '/api/extracted-pages', 'p.percent', '/cancel', '/retry',
   'confirm(', 'localStorage'
 ];
 for (const token of required) {
