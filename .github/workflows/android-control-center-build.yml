@@ -2,14 +2,13 @@ name: Android control center build
 
 on:
   push:
-    branches:
-      - feat/android-control-center-import
+    branches: [main]
     paths:
-      - 'mobile-agent/android-app/**'
+      - 'apps/control-center/mobile-agent/android-app/**'
       - '.github/workflows/android-control-center-build.yml'
   pull_request:
     paths:
-      - 'mobile-agent/android-app/**'
+      - 'apps/control-center/mobile-agent/android-app/**'
       - '.github/workflows/android-control-center-build.yml'
   workflow_dispatch:
 
@@ -34,11 +33,11 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Assemble debug APK
-        working-directory: mobile-agent/android-app
+        working-directory: apps/control-center/mobile-agent/android-app
         run: gradle --no-daemon assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: control-center-debug-apk
-          path: mobile-agent/android-app/app/build/outputs/apk/debug/app-debug.apk
+          path: apps/control-center/mobile-agent/android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
