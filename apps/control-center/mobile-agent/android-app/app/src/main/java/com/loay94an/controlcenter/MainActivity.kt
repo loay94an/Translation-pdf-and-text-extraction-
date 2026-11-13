@@ -80,7 +80,11 @@ class MainActivity : ComponentActivity() {
                 Intent.ACTION_SEND_MULTIPLE -> {
                     @Suppress("DEPRECATION")
                     val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
-                    sharedContent = uris.take(8).joinToString("\n\n") { readSharedUri(it) }
+                    val imported = mutableListOf<String>()
+                    for (uri in uris.take(8)) {
+                        imported += readSharedUri(uri)
+                    }
+                    sharedContent = imported.joinToString("\n\n")
                 }
                 Intent.ACTION_VIEW -> sharedContent = intent.dataString.orEmpty()
             }
