@@ -8,6 +8,12 @@ import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Base64
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebSettings
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +26,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -277,6 +285,8 @@ private fun ControlCenterScreen(
     onAskLocal: suspend (String, String) -> String
 ) {
     var content by remember { mutableStateOf(initialContent) }
+    var showStudio by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as ComponentActivity
     var token by remember { mutableStateOf(initialToken) }
     var url by remember { mutableStateOf("https://www.google.com") }
     var command by remember { mutableStateOf("pwd && ls -la") }
@@ -305,6 +315,50 @@ private fun ControlCenterScreen(
     LaunchedEffect(initialContent) { if (initialContent.isNotBlank()) content = initialContent }
     LaunchedEffect(initialStatus) { status = initialStatus }
 
+    if (showStudio) {
+        val assetLoader = remember {
+            WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(activity))
+                .build()
+        }
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { showStudio = false }) { Text("العودة إلى مركز التحكم") }
+            }
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
+                        settings.javaScriptCanOpenWindowsAutomatically = false
+                        addJavascriptInterface(object {
+                            @JavascriptInterface
+                            fun getToken(): String = TokenVault.read(activity)
+                            @JavascriptInterface
+                            fun setToken(value: String) { TokenVault.write(activity, value.take(512)) }
+                        }, "AndroidSecureStore")
+                        webViewClient = object : WebViewClientCompat() {
+                            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
+                                request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                val uri = request?.url ?: return false
+                                if (uri.host == "appassets.androidplatform.net") return false
+                                return try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                    true
+                                } catch (_: Exception) { true }
+                            }
+                        }
+                        loadUrl("https://appassets.androidplatform.net/assets/studio.html")
+                    }
+                }
+            )
+        }
+    } else {
     Scaffold { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(18.dp).verticalScroll(rememberScrollState()),
@@ -312,6 +366,7 @@ private fun ControlCenterScreen(
         ) {
             Text("مركز التحكم", style = MaterialTheme.typography.headlineMedium)
             Text("Chrome • ChatGPT • النموذج المحلي • Termux")
+            OutlinedButton(onClick = { showStudio = true }, modifier = Modifier.fillMaxWidth()) { Text("فتح لوحة Studio الكاملة") }
             Text("الحالة: $status", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("رابط لفتحه في Chrome") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { onOpenChrome(url) }, modifier = Modifier.fillMaxWidth()) { Text("فتح في Google Chrome") }
@@ -408,5 +463,6 @@ private fun ControlCenterScreen(
                 )
             }
         }
+    }
     }
 }
