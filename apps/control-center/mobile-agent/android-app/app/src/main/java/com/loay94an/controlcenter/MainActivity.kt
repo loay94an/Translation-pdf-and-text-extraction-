@@ -116,49 +116,38 @@ class MainActivity : ComponentActivity() {
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: "shared-file"
         val mime = contentResolver.getType(uri).orEmpty()
-        val temp = File(cacheDir, "incoming-${System.currentTimeMillis()}-${name.replace(Regex("[^A-Za-z0-9._-]"), "_")}")
         try {
-            contentResolver.openInputStream(uri)?.use { input ->
-                temp.outputStream().use { output ->
-                    val buffer = ByteArray(8192)
-                    var total = 0L
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= 50L * 1024 * 1024) { "حجم الملف يتجاوز حد 50MB" }
-                        output.write(buffer, 0, count)
-                    }
-                }
-            } ?: return@withContext "تعذر فتح الملف: $name"
-            val sharedPath = copyToDownloads(temp, name, mime)
-            val pathNote = sharedPath?.let { "\nنسخة متاحة لـTermux: ~/storage/downloads/ControlCenter/$it" }.orEmpty()
+            // Stream directly to shared Downloads: never duplicate a large PDF in app cache.
+            val sharedPath = copyUriToDownloads(uri, name, mime)
+                ?: return@withContext "تعذر حفظ الملف في Download/ControlCenter: $name"
+            val pathNote = "\nنسخة متاحة لـTermux: ~/storage/downloads/ControlCenter/$sharedPath"
             when {
                 mime.startsWith("text/") || name.endsWith(".txt", true) || name.endsWith(".md", true) ||
                     name.endsWith(".csv", true) || name.endsWith(".json", true) -> {
-                    val bytes = temp.readBytes().take(1_000_000).toByteArray()
+                    val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        while (total < 1_000_000) {
+                            val count = input.read(buffer, 0, minOf(buffer.size, 1_000_000 - total))
+                            if (count < 0) break
+                            out.write(buffer, 0, count)
+                            total += count
+                        }
+                        out.toByteArray()
+                    } ?: byteArrayOf()
                     "الملف: $name$pathNote\n\n" + String(bytes, StandardCharsets.UTF_8)
                 }
-                mime == "application/pdf" || name.endsWith(".pdf", true) -> {
-                    com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this@MainActivity)
-                    val pdf = com.tom_roush.pdfbox.pdmodel.PDDocument.load(temp)
-                    try {
-                        val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
-                        stripper.startPage = 1
-                        stripper.endPage = minOf(pdf.numberOfPages, 40)
-                        "الملف: $name — الصفحات: ${pdf.numberOfPages}$pathNote\n\n" + stripper.getText(pdf).take(1_000_000)
-                    } finally { pdf.close() }
-                }
-                else -> "تم استلام الملف: $name$pathNote\nنوع المحتوى: $mime\nهذا النوع يحتاج محرك استخراج مناسبًا."
+                mime == "application/pdf" || name.endsWith(".pdf", true) ->
+                    "تم حفظ PDF دون نسخه إلى ذاكرة التطبيق: $name$pathNote\nاستخدم مسار Termux أعلاه لتشغيل الاستخراج صفحة بصفحة. لا يوجد حد 50MB مفروض من التطبيق؛ الحد هو مساحة التخزين المتاحة."
+                else -> "تم حفظ الملف: $name$pathNote\nنوع المحتوى: $mime"
             }
         } catch (error: Exception) {
-            "تعذر قراءة $name: ${error.message}"
-        } finally {
-            temp.delete()
+            "تعذر استيراد $name: ${error.message}"
         }
     }
 
-    private fun copyToDownloads(source: File, originalName: String, mime: String): String? {
+    private fun copyUriToDownloads(uri: Uri, originalName: String, mime: String): String? {
         if (Build.VERSION.SDK_INT < 29) return null
         val safeName = originalName.replace(Regex("[^A-Za-z0-9._-]"), "_").take(100).ifBlank { "shared-file" }
         val outputName = "${System.currentTimeMillis()}-$safeName"
@@ -169,14 +158,16 @@ class MainActivity : ComponentActivity() {
         }
         val target = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
         return try {
-            contentResolver.openOutputStream(target)?.use { output -> source.inputStream().use { it.copyTo(output) } }
-                ?: throw IllegalStateException("تعذر حفظ نسخة المشاركة")
+            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("تعذر فتح الملف المصدر")
+            val output = contentResolver.openOutputStream(target) ?: throw IllegalStateException("تعذر إنشاء ملف الوجهة")
+            input.use { source -> output.use { destination -> source.copyTo(destination, 1024 * 1024) } }
             outputName
         } catch (error: Exception) {
             contentResolver.delete(target, null, null)
             null
         }
     }
+
     private suspend fun connectAgent(token: String): String = withContext(Dispatchers.IO) {
         require(token.length >= 40) { "رمز الاتصال غير مكتمل؛ انسخ الرمز من تشغيل خادم Termux." }
         val response = request(token, "GET", "/api/health")
