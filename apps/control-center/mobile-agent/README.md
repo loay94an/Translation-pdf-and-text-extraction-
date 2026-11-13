@@ -125,12 +125,12 @@ bash install-boot-start.sh
 - `extracted_page_0001.txt` وما بعدها: ملف TXT منفصل لكل صفحة.
 - `extraction-report.json`: عدد الصفحات والفارغة ومسارات المخرجات.
 
-بعد انتهاء المهمة اضغط **عرض الصفحات** للتنقل بين الصفحات، ثم استخدم أزرار نسخ الصفحة أو نسخ النص الكامل أو تصدير TXT/HTML. المعاينة تقرأ JSONL من داخل مساحة العمل فقط، بحد أقصى 8MB و2500 صفحة. الاستخراج النصي لا يغني عن OCR للصفحات المصورة؛ استخدم Tesseract للصفحات التي لا تحتوي نصًا.
+بعد انتهاء المهمة اضغط **عرض الصفحات** للتنقل بين الصفحات، ثم استخدم أزرار نسخ الصفحة أو نسخ النص الكامل أو تصدير TXT/HTML. المعاينة تقرأ JSONL من داخل مساحة العمل فقط، بحد أقصى 8MB و2500 صفحة. يمكن تفعيل خيار OCR التلقائي للصفحات الفارغة؛ يستخدم Poppler لتحويل الصفحة إلى صورة ثم Tesseract باللغة العربية والإنجليزية. تأكد من تثبيت بيانات اللغة العربية في Tesseract. نتائج OCR آلية وتحتاج مراجعة، خصوصًا الجداول والأرقام.
 
 مثال من Termux:
 
 ```bash
-python "$EXTRACTION_ROOT/scripts/extract_single_pdf.py" "$HOME/storage/downloads/ControlCenter/book.pdf" --output-dir "$HOME/workspace/extracted-pdf" --prefix book
+python "$EXTRACTION_ROOT/scripts/extract_single_pdf.py" "$HOME/storage/downloads/ControlCenter/book.pdf" --output-dir "$HOME/workspace/extracted-pdf" --prefix book --ocr-empty-pages
 ```
 
 ## اختيار النموذج المحلي والمحادثة
