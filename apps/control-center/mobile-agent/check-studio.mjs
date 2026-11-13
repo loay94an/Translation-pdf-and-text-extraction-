@@ -2,9 +2,13 @@ import fs from 'node:fs';
 
 const file = 'apps/control-center/public/studio.html';
 const html = fs.readFileSync(file, 'utf8');
-const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/gi)].map(match => match[1]);
-if (scripts.length !== 1) throw new Error('Expected exactly one inline application script');
-new Function(scripts[0]);
+const start = html.indexOf('<script>');
+const end = html.indexOf('</script>', start + 8);
+if (start < 0 || end < 0 || html.indexOf('<script>', start + 8) >= 0) {
+  throw new Error('Expected exactly one inline application script');
+}
+const script = html.slice(start + 8, end);
+new Function(script);
 const required = [
   'id="pdf"', 'id="ocr"', 'id="models"', 'id="browser"', 'id="terminal"',
   'id="settings"', '/api/jobs', '/api/chat', '/api/exec', '/api/extracted-pages',
