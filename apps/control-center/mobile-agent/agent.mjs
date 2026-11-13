@@ -160,7 +160,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/github/connect') {
     try {
       const body=await readBody(req); const ghToken=String(body.token||'').trim();
-      if(!/^github_pat_[A-Za-z0-9_]+$/.test(ghToken) && !/^gh[pousr]_[A-Za-z0-9_]+$/.test(ghToken)) return send(res,400,{ok:false,error:'صيغة رمز GitHub غير معروفة'});
+      if(!/^github_pat_[A-Za-z0-9_]+$/.test(ghToken)) return send(res,400,{ok:false,error:'صيغة رمز GitHub غير معروفة'});
       const response=await fetch('https://api.github.com/user',{headers:{Authorization:'Bearer '+ghToken,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(15000)});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)return send(res,401,{ok:false,error:data.message||'رفض GitHub الرمز أو صلاحياته'});
