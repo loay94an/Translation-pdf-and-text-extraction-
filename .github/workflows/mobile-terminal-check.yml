@@ -13,6 +13,8 @@ on:
     paths:
       - 'apps/control-center/mobile-agent/**'
       - 'apps/control-center/public/mobile-terminal.html'
+      - 'apps/control-center/public/studio.html'
+      - 'apps/control-center/mobile-agent/check-studio.mjs'
       - 'extraction/scripts/extract_single_pdf.py'
       - '.github/workflows/mobile-terminal-check.yml'
   workflow_dispatch:
