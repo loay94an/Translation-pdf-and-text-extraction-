@@ -57,13 +57,14 @@ function startJob(command, cwd, timeoutMs) {
   let pending = '';
   const append = (chunk, isError = false) => {
     pending += chunk.toString();
-    const lines = pending.split(/\\r?\\n/);
+    const lines = pending.split(String.fromCharCode(10));
     pending = lines.pop() || '';
-    for (const line of lines) {
+    for (let line of lines) {
+      if (line.endsWith(String.fromCharCode(13))) line = line.slice(0, -1);
       if (line.startsWith('@@PROGRESS ')) {
         try { job.progress = JSON.parse(line.slice(11)); persistJob(job); } catch {}
       } else {
-        const value = (isError ? '[stderr] ' : '') + line + '\\n';
+        const value = (isError ? '[stderr] ' : '') + line + String.fromCharCode(10);
         log.write(value);
         job.output = (job.output + value).slice(-MAX_OUTPUT);
       }
@@ -77,11 +78,11 @@ function startJob(command, cwd, timeoutMs) {
     setTimeout(() => { if (job.status === 'running' || job.status === 'cancelling') child.kill('SIGKILL'); }, 5000).unref();
   }, Math.min(Math.max(timeoutMs || TIMEOUT_MS, 1000), MAX_JOB_MS));
   child.on('error', error => {
-    job.status = 'failed'; job.exitCode = 1; job.output = (job.output + '\\n' + error.message).slice(-MAX_OUTPUT);
+    job.status = 'failed'; job.exitCode = 1; job.output = (job.output + String.fromCharCode(10) + error.message).slice(-MAX_OUTPUT);
     job.finishedAt = new Date().toISOString(); clearTimeout(timer); log.end(); persistJob(job);
   });
   child.on('close', code => {
-    if (pending) append(Buffer.from('\\n' + pending));
+    if (pending) append(Buffer.from(String.fromCharCode(10) + pending));
     job.status = job.timedOut ? 'timed_out' : (job.status === 'cancelling' ? 'cancelled' : (code === 0 ? 'completed' : 'failed'));
     job.exitCode = code; job.finishedAt = new Date().toISOString();
     clearTimeout(timer); log.end(); persistJob(job);
