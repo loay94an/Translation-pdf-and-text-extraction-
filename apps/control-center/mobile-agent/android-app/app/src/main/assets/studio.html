@@ -140,14 +140,120 @@ button:focus-visible,[role=button]:focus-visible{outline:2px solid #90adff;outli
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
+
+/* ===== محور / complete workspace redesign v3 ===== */
+:root{color-scheme:light;--bg:#f3f5f9;--panel:#fff;--panel-2:#f7f9fc;--line:#e3e8f0;--muted:#738197;--text:#18263b;--blue:#315ee8;--green:#159b72;--amber:#bd8121;--red:#d94b62}
+html,body{background:#f3f5f9;color:#18263b}
+body{background:linear-gradient(135deg,#f6f8fc 0%,#edf1f7 100%);font-family:system-ui,"Noto Sans Arabic",sans-serif}
+.shell{max-width:1600px;padding:0 26px 42px}
+.header{position:relative;top:auto;margin:0 -26px;padding:18px 30px;background:#fff;border-bottom:1px solid #e4e9f1;box-shadow:0 3px 18px rgba(31,48,77,.04)}
+.header h1{color:#17243a;font-size:20px!important;font-weight:850}
+.header .muted{color:#8793a6}
+.brand{gap:13px}.logo{background:linear-gradient(145deg,#365fe9,#243c9b);border-radius:13px;box-shadow:0 8px 18px #315ee82b}
+.status{background:#f8fafc;border:1px solid #e5eaf2;color:#33445d;border-radius:12px}
+.tag,.pill{background:#f0f4ff;border-color:#dce5ff;color:#3c58a7}
+.layout{grid-template-columns:250px minmax(0,1fr);gap:22px;margin-top:22px;align-items:start}
+.nav{position:sticky;top:18px;max-height:calc(100dvh - 36px);overflow:auto;padding:16px 12px;background:#17243a;border:0;border-radius:20px;box-shadow:0 16px 35px rgba(25,42,69,.16);color:#fff}
+.nav:before{display:none}
+.nav-brand{display:flex;align-items:center;gap:11px;padding:8px 10px 20px;margin-bottom:10px;border-bottom:1px solid #ffffff1c;color:#fff}
+.nav-brand-mark{display:grid;place-items:center;width:39px;height:39px;border-radius:12px;background:linear-gradient(140deg,#6f91ff,#3c5de2);font-size:20px;font-weight:900}
+.nav-brand b{display:block;font-size:16px;letter-spacing:.5px}.nav-brand small{display:block;color:#91a2bd;font-size:10px;margin-top:2px}
+.nav-caption{padding:14px 12px 7px;color:#788ba9;font-size:10px;font-weight:800;letter-spacing:1px}
+.nav button{display:flex;align-items:center;gap:11px;width:100%;min-height:45px;padding:9px 11px;margin:3px 0;border:1px solid transparent;border-radius:11px;background:transparent;color:#b9c7db;text-align:right;font-size:12px;font-weight:650;box-shadow:none;transition:.18s}
+.nav button:hover{background:#ffffff10;color:#fff;transform:translateX(-2px);box-shadow:none}
+.nav button.active{background:linear-gradient(100deg,#315ee8,#426ce7);color:#fff;border-color:#7894ff55;box-shadow:0 7px 16px #152e8055}
+.nav-icon{display:grid;place-items:center;width:27px;height:27px;border-radius:8px;background:#ffffff12;font-size:15px;flex:none}
+.nav button i{margin-right:auto;color:#7184a3;font-size:9px;font-style:normal;font-weight:700}
+.nav button.active i{color:#dce5ff}
+.nav-foot{display:flex;align-items:center;gap:8px;margin:20px 6px 4px;padding:12px 8px;border-top:1px solid #ffffff1c;color:#91a2bd;font-size:10px}
+.nav-foot-dot{width:7px;height:7px;border-radius:50%;background:#36d49a;box-shadow:0 0 0 4px #36d49a20}
+.panel{min-height:75vh;padding:26px;background:transparent;border:0;border-radius:0;box-shadow:none}
+.content{min-width:0}
+.view.active{animation:workspaceEnter .24s ease-out}
+@keyframes workspaceEnter{from{opacity:.45;transform:translateY(7px)}to{opacity:1;transform:none}}
+.titlebar{margin-bottom:22px;align-items:center}
+.titlebar h2{font-size:24px;color:#17243a;letter-spacing:-.5px}
+.titlebar .muted{color:#7b899d}
+.card{padding:20px;background:#fff;border:1px solid #e4e9f1;border-radius:16px;box-shadow:0 5px 18px rgba(31,48,77,.045)}
+.card h3{color:#20314a;font-size:15px;font-weight:800}
+.metric{color:#203d89;font-size:32px}
+.grid{gap:16px}.grid.three{gap:14px}
+button{min-height:43px;border-radius:10px;background:#315ee8;color:#fff;box-shadow:0 5px 12px #315ee81c;font-weight:750}
+button:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 8px 17px #315ee82b}
+button.secondary{background:#edf2ff;color:#3153b5;border:1px solid #dce5ff;box-shadow:none}
+button.ghost{background:#fff;color:#53637a;border:1px solid #dce3ed;box-shadow:none}
+input,select,textarea{background:#fbfcfe;border:1px solid #dce3ed;color:#1c2b40;border-radius:10px;min-height:44px}
+input:focus,select:focus,textarea:focus{border-color:#6486f3;box-shadow:0 0 0 3px #315ee815}
+label{color:#4c5d75;font-weight:700}
+.field{gap:8px;margin:15px 0}
+.muted{color:#7c899d}
+.step{border-color:#edf0f5;color:#34445c}
+.progress{background:#e9edf4;border:0;height:9px}.progress>i{background:linear-gradient(90deg,#315ee8,#22b88a)}
+.hint{background:#fff9eb;border:1px solid #f1dfb8;color:#7e5b1b;border-radius:12px}
+.output,.terminal{background:#111c2e;border:1px solid #273a57;color:#d7e5ff;border-radius:12px}
+.page{background:#fff;border:1px solid #e2e8f0;color:#26364e;border-radius:12px}
+.msg{background:#f4f7fc;border:1px solid #e3e9f2;color:#26364e}.msg.user{background:#eaf0ff}.msg.assistant{border-right:3px solid #315ee8}
+.check{background:#f7f9fc;border-radius:10px}
+.workspace-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:230px;padding:30px 34px;margin:0 0 23px;border-radius:20px;background:linear-gradient(112deg,#172b50 0%,#244a91 58%,#315ee8 100%);color:#fff;overflow:hidden;position:relative;box-shadow:0 16px 35px #1d3f8124}
+.workspace-hero:after{content:"";position:absolute;width:330px;height:330px;border:1px solid #ffffff20;border-radius:50%;left:4%;top:-185px;box-shadow:0 0 0 32px #ffffff08,0 0 0 70px #ffffff06}
+.eyebrow{font-size:9px;letter-spacing:2px;color:#b9caff;font-weight:800}
+.workspace-hero h2{font-size:27px;margin:12px 0 8px;color:#fff;letter-spacing:-.5px}
+.workspace-hero p{max-width:600px;margin:0;color:#d2def5;font-size:13px;line-height:1.9}
+.hero-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}
+.workspace-hero button{background:#fff;color:#24458d;box-shadow:none}.workspace-hero button.hero-secondary{background:#ffffff16;color:#fff;border:1px solid #ffffff48}
+.hero-orbit{width:150px;height:150px;flex:none;position:relative;border:1px solid #ffffff35;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 0 18px #ffffff09,0 0 0 38px #ffffff07}
+.orbit-core{display:grid;place-items:center;width:70px;height:70px;border-radius:23px;background:linear-gradient(145deg,#fff,#dce7ff);color:#3153b5;font-size:34px;font-weight:900;box-shadow:0 10px 35px #061b4a55}
+.orbit-dot{position:absolute;width:11px;height:11px;border-radius:50%;background:#6fe0c0;box-shadow:0 0 0 6px #6fe0c01e}
+.orbit-dot.d1{top:12px;right:22px}.orbit-dot.d2{bottom:15px;left:18px;background:#ffd17c}.orbit-dot.d3{top:62px;left:-5px;background:#fff}
+.overview-label{font-size:12px;font-weight:850;color:#53637a;margin:0 0 12px}
+#overview .grid.three .card{min-height:118px;display:flex;flex-direction:column;justify-content:center}
+#overview .grid.three .card .muted:first-child{font-size:11px;font-weight:750}
+#overview .grid.three .metric{margin:7px 0 2px}
+#overview .grid.three .card small{font-size:10px}
+#overview .card[style*="margin-top"]{margin-top:16px!important}
+@media(max-width:900px){
+ .shell{padding:0 12px 104px}.header{margin:0 -12px;padding:13px 15px}
+ .layout{grid-template-columns:1fr;gap:8px;margin-top:8px}
+ .nav{position:fixed;z-index:60;left:9px;right:9px;bottom:calc(8px + env(safe-area-inset-bottom));top:auto;max-height:none;height:70px;padding:6px 8px;display:flex;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;border-radius:17px;background:#17243af2;backdrop-filter:blur(18px);box-shadow:0 12px 35px #111d36a0;scrollbar-width:none}
+ .nav::-webkit-scrollbar{display:none}.nav-brand,.nav-caption,.nav-foot{display:none}
+ .nav button{flex:0 0 auto;width:auto;min-width:66px;min-height:56px;height:56px;justify-content:center;flex-direction:column;gap:2px;padding:4px 7px;margin:0;border-radius:11px;font-size:9px;white-space:nowrap}
+ .nav button i{display:none}.nav-icon{width:auto;height:auto;background:transparent;font-size:16px}
+ .nav button.active{box-shadow:inset 0 -3px #a9bcff}
+ .panel{padding:12px 2px;min-height:65vh}.workspace-hero{min-height:190px;padding:22px 20px}
+ .workspace-hero h2{font-size:21px}.hero-orbit{width:95px;height:95px;margin-left:5px}.orbit-core{width:48px;height:48px;border-radius:16px;font-size:25px}
+ .titlebar h2{font-size:20px}
+}
+@media(max-width:540px){
+ .shell{padding-left:9px;padding-right:9px}.header{margin:0 -9px}
+ .header .brand .muted{font-size:10px}.status{padding:6px 8px;font-size:10px}
+ .workspace-hero{min-height:0;padding:20px 17px}.hero-orbit{display:none}
+ .workspace-hero h2{font-size:20px}.workspace-hero p{font-size:11px}
+ .hero-actions{margin-top:14px}.hero-actions button{font-size:10px;padding:8px 10px;min-height:38px}
+ .grid,.grid.three{grid-template-columns:1fr}.card{padding:15px}
+ .titlebar{gap:8px}.titlebar h2{font-size:18px}
+}
+
 </style>
 </head>
 <body><div class="shell">
-<header class="header"><div class="brand"><div class="logo" aria-hidden="true">✦</div><div><h1 style="font-size:21px;margin:0">مركز العمل الذكي</h1><div class="muted">منصة موحدة للمستندات والذكاء الاصطناعي والأتمتة</div></div></div><div class="status"><span id="connDot" class="dot"></span><span id="connText">غير متصل بالجسر المحلي</span><span class="tag">لوحة التحكم</span></div></header>
+<header class="header"><div class="brand"><div class="logo" aria-hidden="true">✦</div><div><h1 style="font-size:21px;margin:0">مِحــور | مساحة العمل</h1><div class="muted">منصة معالجة المستندات والذكاء الاصطناعي</div></div></div><div class="status"><span id="connDot" class="dot"></span><span id="connText">غير متصل بالجسر المحلي</span><span class="tag">بيئة محلية آمنة</span></div></header>
 <div class="layout">
 <nav class="nav" aria-label="التنقل الرئيسي">
-<button class="active" data-view="overview">◫ نظرة عامة</button><button data-view="pdf">▤ إدارة PDF</button><button data-view="translation">文 ترجمة النصوص</button><button data-view="ocr">⌕ إعدادات OCR</button><button data-view="models">✧ النماذج والمحادثة</button><button data-view="browser">◎ ربط المتصفح</button>
-<button data-view="github">⌘ GitHub والمستودعات</button><button data-view="terminal">› الطرفية والمهام</button><button data-view="settings">⚙ الإعدادات</button><button data-view="help">ⓘ التعليمات</button>
+<div class="nav-brand"><span class="nav-brand-mark">م</span><span><b>مِحــور</b><small>مساحة العمل الذكية</small></span></div>
+<div class="nav-caption">مساحة العمل</div>
+<button class="active" data-view="overview"><span class="nav-icon">⌂</span><span>نظرة عامة</span><i>01</i></button>
+<button data-view="pdf"><span class="nav-icon">▤</span><span>استخراج PDF</span><i>02</i></button>
+<button data-view="translation"><span class="nav-icon">文</span><span>الترجمة</span><i>03</i></button>
+<button data-view="ocr"><span class="nav-icon">⌕</span><span>محرك OCR</span><i>04</i></button>
+<div class="nav-caption">الذكاء والربط</div>
+<button data-view="models"><span class="nav-icon">✧</span><span>النماذج والمحادثة</span><i>05</i></button>
+<button data-view="browser"><span class="nav-icon">◎</span><span>جسر المتصفح</span><i>06</i></button>
+<button data-view="github"><span class="nav-icon">⌘</span><span>GitHub</span><i>07</i></button>
+<div class="nav-caption">النظام</div>
+<button data-view="terminal"><span class="nav-icon">›_</span><span>الطرفية والمهام</span><i>08</i></button>
+<button data-view="settings"><span class="nav-icon">⚙</span><span>الإعدادات</span><i>09</i></button>
+<button data-view="help"><span class="nav-icon">?</span><span>مركز المساعدة</span><i>10</i></button>
+<div class="nav-foot"><span class="nav-foot-dot"></span><span>العمل محليًا على جهازك</span></div>
 </nav>
 <main class="content"><div class="panel">
 <section id="overview" class="view active"><div class="titlebar"><div><h2>لوحة المتابعة</h2><div class="muted">حالة الخدمات والمهام الأخيرة ومؤشرات الإنجاز</div></div><button id="connect">الاتصال بالجهاز</button></div>
