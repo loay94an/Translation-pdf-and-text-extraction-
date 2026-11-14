@@ -1,6 +1,8 @@
 package com.loay94an.controlcenter
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.net.Uri
 import android.os.Bundle
@@ -34,6 +36,8 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -47,6 +51,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class MainActivity : ComponentActivity() {
+    companion object { private const val ACTION_TERMUX_AUTO_RESULT = "com.loay94an.controlcenter.TERMUX_AUTO_RESULT" }
+    private var termuxAutoResult: CompletableDeferred<String>? = null
     private var studioFileCallback: ValueCallback<Array<Uri>>? = null
     private val studioPdfPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val callback = studioFileCallback
@@ -81,6 +87,7 @@ class MainActivity : ComponentActivity() {
                     onShare = ::shareText,
                     onReadUri = ::readSharedUri,
                     onConnect = ::connectAgent,
+                    onAutoConnect = ::autoConnectAgent,
                     onRunCommand = ::runCommand,
                     onRunOcr = ::runOcr,
                     onAskLocal = ::askLocalModel
@@ -92,7 +99,39 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == ACTION_TERMUX_AUTO_RESULT) {
+            val result = intent.getBundleExtra("result")
+            val stdout = result?.getString("stdout").orEmpty()
+            val stderr = result?.getString("stderr").orEmpty()
+            val exitCode = result?.getInt("exitCode", 1) ?: 1
+            termuxAutoResult?.complete(if (exitCode == 0) stdout else "فشل أمر Termux ($exitCode): $stderr")
+            return
+        }
         acceptIncomingIntent(intent)
+    }
+
+    private suspend fun autoConnectAgent(): String {
+        if (packageManager.getLaunchIntentForPackage("com.termux") == null) throw IllegalStateException("تطبيق Termux غير مثبت.")
+        if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) throw IllegalStateException("اسمح بصلاحية RUN_COMMAND من إعدادات التطبيق > الأذونات الإضافية.")
+        val deferred = CompletableDeferred<String>(); termuxAutoResult = deferred
+        val requestCode = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        val resultIntent = Intent(this, MainActivity::class.java).setAction(ACTION_TERMUX_AUTO_RESULT)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+        val pending = PendingIntent.getActivity(this, requestCode, resultIntent, flags)
+        val command = Intent().apply {
+            setClassName("com.termux", "com.termux.app.RunCommandService"); action = "com.termux.RUN_COMMAND"
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", "$HOME/.local/bin/control-center-bridge-connect"))
+            putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true); putExtra("pendingIntent", pending)
+        }
+        try {
+            startService(command)
+            val raw = withTimeout(60000) { deferred.await() }.trim()
+            val found = Regex("(?m)^([a-f0-9]{64})$").find(raw)?.groupValues?.get(1) ?: throw IllegalStateException(raw.ifBlank { "لم يرجع Termux رمز الربط. شغّل setup-auto-connect.sh وتحقق من allow-external-apps." })
+            return connectAgent(found)
+        } catch (error: SecurityException) { throw IllegalStateException("رفض Android تشغيل أوامر Termux. تحقق من صلاحية RUN_COMMAND وإعداد allow-external-apps.") }
+        finally { termuxAutoResult = null }
     }
 
     private fun acceptIncomingIntent(intent: Intent?) {
@@ -300,6 +339,7 @@ private fun ControlCenterScreen(
     onShare: (String) -> Unit,
     onReadUri: suspend (Uri) -> String,
     onConnect: suspend (String) -> String,
+    onAutoConnect: suspend () -> String,
     onRunCommand: suspend (String, String) -> String,
     onRunOcr: suspend (String, String) -> String,
     onAskLocal: suspend (String, String) -> String
@@ -402,6 +442,12 @@ private fun ControlCenterScreen(
 
             HorizontalDivider()
             Text("ربط الطرفية المحلية", style = MaterialTheme.typography.titleLarge)
+            Button(enabled = !busy, onClick = { scope.launch {
+                busy = true
+                status = try { onAutoConnect() } catch (e: Exception) { "الربط التلقائي: ${e.message}" }
+                busy = false
+            } }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "جارٍ فحص Termux والربط..." else "ربط الطرفية تلقائيًا") }
+            Text("يتطلب Termux حديثًا وصلاحية RUN_COMMAND وتفعيل allow-external-apps. ينشئ الرمز ويحفظه مشفرًا دون نسخه يدويًا.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = token, onValueChange = { token = it },
                 label = { Text("رمز Termux — يُدخل مرة واحدة") }, modifier = Modifier.fillMaxWidth(),
