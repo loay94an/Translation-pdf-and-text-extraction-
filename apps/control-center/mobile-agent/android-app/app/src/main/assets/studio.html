@@ -195,7 +195,7 @@ loadSettings();renderQuickCommands();$('translationPdf').value='';$('translation
 // Move the existing functional controls into the compact single-screen workspace.
 (function setupSimpleWorkspace(){
  const move=(id,slot)=>{const el=document.getElementById(id),target=document.getElementById(slot);if(el&&target)target.appendChild(el.parentElement);};
- move('command','simpleCommandSlot');move('terminalCwd','simpleCwdSlot');move('runCommand','simpleRunSlot');move('terminalOutput','simpleTerminalResultSlot');
+ move('command','simpleCommandSlot');move('terminalCwd','simpleCwdSlot');move('runCommand','simpleRunSlot');const terminalResult=document.getElementById('terminalOutput');if(terminalResult)document.getElementById('simpleTerminalResultSlot').appendChild(terminalResult);
  move('model','simpleModelSlot');move('refreshModels','simpleModelRefreshSlot');move('modelStatus','simpleModelStatusSlot');
  move('chat','simpleChatSlot');move('prompt','simplePromptSlot');move('sendChat','simpleChatActionsSlot');
  const clear=document.getElementById('clearChat'),chatActions=document.getElementById('simpleChatActionsSlot');if(clear&&chatActions)chatActions.appendChild(clear);
