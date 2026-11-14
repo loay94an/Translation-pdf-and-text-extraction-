@@ -1,6 +1,8 @@
 package com.loay94an.controlcenter
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.net.Uri
 import android.os.Bundle
@@ -8,6 +10,14 @@ import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Base64
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.ValueCallback
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebSettings
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,10 +30,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -37,6 +51,26 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class MainActivity : ComponentActivity() {
+    companion object { private const val ACTION_TERMUX_AUTO_RESULT = "com.loay94an.controlcenter.TERMUX_AUTO_RESULT" }
+    private var termuxAutoResult: CompletableDeferred<String>? = null
+    private var studioFileCallback: ValueCallback<Array<Uri>>? = null
+    private val studioPdfPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val callback = studioFileCallback
+        studioFileCallback = null
+        callback?.onReceiveValue(uri?.let { arrayOf(it) })
+    }
+    fun openStudioPdfPicker(callback: ValueCallback<Array<Uri>>?): Boolean {
+        if (callback == null) return false
+        studioFileCallback?.onReceiveValue(null)
+        studioFileCallback = callback
+        return try {
+            studioPdfPicker.launch(arrayOf("application/pdf"))
+            true
+        } catch (_: Exception) {
+            studioFileCallback = null
+            false
+        }
+    }
     private var sharedContent by mutableStateOf("")
     private var incomingStatus by mutableStateOf("جاهز")
 
@@ -53,6 +87,7 @@ class MainActivity : ComponentActivity() {
                     onShare = ::shareText,
                     onReadUri = ::readSharedUri,
                     onConnect = ::connectAgent,
+                    onAutoConnect = ::autoConnectAgent,
                     onRunCommand = ::runCommand,
                     onRunOcr = ::runOcr,
                     onAskLocal = ::askLocalModel
@@ -64,7 +99,39 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == ACTION_TERMUX_AUTO_RESULT) {
+            val result = intent.getBundleExtra("result")
+            val stdout = result?.getString("stdout").orEmpty()
+            val stderr = result?.getString("stderr").orEmpty()
+            val exitCode = result?.getInt("exitCode", 1) ?: 1
+            termuxAutoResult?.complete(if (exitCode == 0) stdout else "فشل أمر Termux ($exitCode): $stderr")
+            return
+        }
         acceptIncomingIntent(intent)
+    }
+
+    private suspend fun autoConnectAgent(): String {
+        if (packageManager.getLaunchIntentForPackage("com.termux") == null) throw IllegalStateException("تطبيق Termux غير مثبت.")
+        if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) throw IllegalStateException("اسمح بصلاحية RUN_COMMAND من إعدادات التطبيق > الأذونات الإضافية.")
+        val deferred = CompletableDeferred<String>(); termuxAutoResult = deferred
+        val requestCode = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        val resultIntent = Intent(this, MainActivity::class.java).setAction(ACTION_TERMUX_AUTO_RESULT)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+        val pending = PendingIntent.getActivity(this, requestCode, resultIntent, flags)
+        val command = Intent().apply {
+            setClassName("com.termux", "com.termux.app.RunCommandService"); action = "com.termux.RUN_COMMAND"
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", "\$HOME/.local/bin/control-center-bridge-connect"))
+            putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true); putExtra("pendingIntent", pending)
+        }
+        try {
+            startService(command)
+            val raw = withTimeout(60000) { deferred.await() }.trim()
+            val found = Regex("(?m)^([a-f0-9]{64})$").find(raw)?.groupValues?.get(1) ?: throw IllegalStateException(raw.ifBlank { "لم يرجع Termux رمز الربط. شغّل setup-auto-connect.sh وتحقق من allow-external-apps." })
+            return connectAgent(found)
+        } catch (error: SecurityException) { throw IllegalStateException("رفض Android تشغيل أوامر Termux. تحقق من صلاحية RUN_COMMAND وإعداد allow-external-apps.") }
+        finally { termuxAutoResult = null }
     }
 
     private fun acceptIncomingIntent(intent: Intent?) {
@@ -116,49 +183,38 @@ class MainActivity : ComponentActivity() {
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: "shared-file"
         val mime = contentResolver.getType(uri).orEmpty()
-        val temp = File(cacheDir, "incoming-${System.currentTimeMillis()}-${name.replace(Regex("[^A-Za-z0-9._-]"), "_")}")
         try {
-            contentResolver.openInputStream(uri)?.use { input ->
-                temp.outputStream().use { output ->
-                    val buffer = ByteArray(8192)
-                    var total = 0L
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= 50L * 1024 * 1024) { "حجم الملف يتجاوز حد 50MB" }
-                        output.write(buffer, 0, count)
-                    }
-                }
-            } ?: return@withContext "تعذر فتح الملف: $name"
-            val sharedPath = copyToDownloads(temp, name, mime)
-            val pathNote = sharedPath?.let { "\nنسخة متاحة لـTermux: ~/storage/downloads/ControlCenter/$it" }.orEmpty()
+            // Stream directly to shared Downloads: never duplicate a large PDF in app cache.
+            val sharedPath = copyUriToDownloads(uri, name, mime)
+                ?: return@withContext "تعذر حفظ الملف في Download/ControlCenter: $name"
+            val pathNote = "\nنسخة متاحة لـTermux: ~/storage/downloads/ControlCenter/$sharedPath"
             when {
                 mime.startsWith("text/") || name.endsWith(".txt", true) || name.endsWith(".md", true) ||
                     name.endsWith(".csv", true) || name.endsWith(".json", true) -> {
-                    val bytes = temp.readBytes().take(1_000_000).toByteArray()
+                    val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        while (total < 1_000_000) {
+                            val count = input.read(buffer, 0, minOf(buffer.size, 1_000_000 - total))
+                            if (count < 0) break
+                            out.write(buffer, 0, count)
+                            total += count
+                        }
+                        out.toByteArray()
+                    } ?: byteArrayOf()
                     "الملف: $name$pathNote\n\n" + String(bytes, StandardCharsets.UTF_8)
                 }
-                mime == "application/pdf" || name.endsWith(".pdf", true) -> {
-                    com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this@MainActivity)
-                    val pdf = com.tom_roush.pdfbox.pdmodel.PDDocument.load(temp)
-                    try {
-                        val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
-                        stripper.startPage = 1
-                        stripper.endPage = minOf(pdf.numberOfPages, 40)
-                        "الملف: $name — الصفحات: ${pdf.numberOfPages}$pathNote\n\n" + stripper.getText(pdf).take(1_000_000)
-                    } finally { pdf.close() }
-                }
-                else -> "تم استلام الملف: $name$pathNote\nنوع المحتوى: $mime\nهذا النوع يحتاج محرك استخراج مناسبًا."
+                mime == "application/pdf" || name.endsWith(".pdf", true) ->
+                    "تم حفظ PDF دون نسخه إلى ذاكرة التطبيق: $name$pathNote\nاستخدم مسار Termux أعلاه لتشغيل الاستخراج صفحة بصفحة. لا يوجد حد 50MB مفروض من التطبيق؛ الحد هو مساحة التخزين المتاحة."
+                else -> "تم حفظ الملف: $name$pathNote\nنوع المحتوى: $mime"
             }
         } catch (error: Exception) {
-            "تعذر قراءة $name: ${error.message}"
-        } finally {
-            temp.delete()
+            "تعذر استيراد $name: ${error.message}"
         }
     }
 
-    private fun copyToDownloads(source: File, originalName: String, mime: String): String? {
+    private fun copyUriToDownloads(uri: Uri, originalName: String, mime: String): String? {
         if (Build.VERSION.SDK_INT < 29) return null
         val safeName = originalName.replace(Regex("[^A-Za-z0-9._-]"), "_").take(100).ifBlank { "shared-file" }
         val outputName = "${System.currentTimeMillis()}-$safeName"
@@ -169,14 +225,16 @@ class MainActivity : ComponentActivity() {
         }
         val target = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
         return try {
-            contentResolver.openOutputStream(target)?.use { output -> source.inputStream().use { it.copyTo(output) } }
-                ?: throw IllegalStateException("تعذر حفظ نسخة المشاركة")
+            val input = contentResolver.openInputStream(uri) ?: throw IllegalStateException("تعذر فتح الملف المصدر")
+            val output = contentResolver.openOutputStream(target) ?: throw IllegalStateException("تعذر إنشاء ملف الوجهة")
+            input.use { source -> output.use { destination -> source.copyTo(destination, 1024 * 1024) } }
             outputName
         } catch (error: Exception) {
             contentResolver.delete(target, null, null)
             null
         }
     }
+
     private suspend fun connectAgent(token: String): String = withContext(Dispatchers.IO) {
         require(token.length >= 40) { "رمز الاتصال غير مكتمل؛ انسخ الرمز من تشغيل خادم Termux." }
         val response = request(token, "GET", "/api/health")
@@ -194,7 +252,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun runOcr(token: String, filename: String): String = withContext(Dispatchers.IO) {
         require(filename.matches(Regex("[A-Za-z0-9._-]{1,140}\\.pdf", RegexOption.IGNORE_CASE))) { "اسم ملف PDF غير صالح." }
         val file = "\$HOME/storage/downloads/ControlCenter/$filename"
-        val command = "mkdir -p \"\$HOME/workspace/ocr\" && rm -f \"\$HOME/workspace/ocr\"/page-*.png && pdftoppm -f 1 -l 40 -r 250 -png \"$file\" \"\$HOME/workspace/ocr/page\" && for f in \"\$HOME/workspace/ocr\"/page-*.png; do [ -f \"\$f\" ] || continue; echo \"--- \$(basename \"\$f\") ---\"; tesseract \"\$f\" stdout -l ara+eng 2>/dev/null; done"
+        val command = "WORK=\"\${LOCAL_AGENT_WORKSPACE:-\$HOME/workspace}\"; mkdir -p \"\$WORK/ocr\" && rm -f \"\$WORK/ocr\"/page-*.png && pdftoppm -f 1 -l 40 -r 250 -png \"$file\" \"\$WORK/ocr/page\" && for f in \"\$WORK/ocr\"/page-*.png; do [ -f \"\$f\" ] || continue; echo \"--- \$(basename \"\$f\") ---\"; tesseract \"\$f\" stdout -l ara+eng 2>/dev/null; done"
         val response = request(token, "POST", "/api/exec", JSONObject().put("command", command).put("cwd", ".").toString())
         "رمز الخروج: ${response.optInt("exitCode")}\n${response.optString("stdout")}\n${response.optString("stderr")}"
     }
@@ -281,17 +339,30 @@ private fun ControlCenterScreen(
     onShare: (String) -> Unit,
     onReadUri: suspend (Uri) -> String,
     onConnect: suspend (String) -> String,
+    onAutoConnect: suspend () -> String,
     onRunCommand: suspend (String, String) -> String,
     onRunOcr: suspend (String, String) -> String,
     onAskLocal: suspend (String, String) -> String
 ) {
     var content by remember { mutableStateOf(initialContent) }
+    var showStudio by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as MainActivity
     var token by remember { mutableStateOf(initialToken) }
     var url by remember { mutableStateOf("https://www.google.com") }
     var command by remember { mutableStateOf("pwd && ls -la") }
     var output by remember { mutableStateOf("") }
     var status by remember { mutableStateOf(initialStatus) }
     var busy by remember { mutableStateOf(false) }
+    var pendingQuickCommand by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val quickCommands = listOf(
+        "فحص الجهاز" to "pwd && uname -a && df -h",
+        "عرض الملفات" to "ls -lah",
+        "تحديث Termux" to "pkg update -y",
+        "فحص أدوات PDF وOCR" to "command -v pdftotext; command -v pdftoppm; command -v tesseract; tesseract --list-langs",
+        "فحص Python" to "python --version && python -m pip --version",
+        "فحص النموذج المحلي" to "curl -fsS http://127.0.0.1:8080/v1/models",
+        "فحص Git" to "git status --short --branch"
+    )
     val scope = rememberCoroutineScope()
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
@@ -304,6 +375,59 @@ private fun ControlCenterScreen(
     LaunchedEffect(initialContent) { if (initialContent.isNotBlank()) content = initialContent }
     LaunchedEffect(initialStatus) { status = initialStatus }
 
+    if (showStudio) {
+        val assetLoader = remember {
+            WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(activity))
+                .build()
+        }
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { showStudio = false }) { Text("العودة إلى مركز التحكم") }
+            }
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = true
+                        settings.javaScriptCanOpenWindowsAutomatically = false
+                        addJavascriptInterface(object {
+                            @JavascriptInterface
+                            fun getToken(): String = TokenVault.read(activity)
+                            @JavascriptInterface
+                            fun setToken(value: String) { TokenVault.write(activity, value.take(512)) }
+                        }, "AndroidSecureStore")
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onShowFileChooser(
+                                webView: WebView?,
+                                filePathCallback: ValueCallback<Array<Uri>>?,
+                                fileChooserParams: FileChooserParams?
+                            ): Boolean {
+                                return activity.openStudioPdfPicker(filePathCallback)
+                            }
+                        }
+                        webViewClient = object : WebViewClientCompat() {
+                            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
+                                request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                val uri = request?.url ?: return false
+                                if (uri.host == "appassets.androidplatform.net") return false
+                                return try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                    true
+                                } catch (_: Exception) { true }
+                            }
+                        }
+                        loadUrl("https://appassets.androidplatform.net/assets/studio.html")
+                    }
+                }
+            )
+        }
+    } else {
     Scaffold { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(18.dp).verticalScroll(rememberScrollState()),
@@ -311,12 +435,19 @@ private fun ControlCenterScreen(
         ) {
             Text("مركز التحكم", style = MaterialTheme.typography.headlineMedium)
             Text("Chrome • ChatGPT • النموذج المحلي • Termux")
+            OutlinedButton(onClick = { showStudio = true }, modifier = Modifier.fillMaxWidth()) { Text("فتح لوحة Studio الكاملة") }
             Text("الحالة: $status", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("رابط لفتحه في Chrome") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { onOpenChrome(url) }, modifier = Modifier.fillMaxWidth()) { Text("فتح في Google Chrome") }
 
             HorizontalDivider()
             Text("ربط الطرفية المحلية", style = MaterialTheme.typography.titleLarge)
+            Button(enabled = !busy, onClick = { scope.launch {
+                busy = true
+                status = try { onAutoConnect() } catch (e: Exception) { "الربط التلقائي: ${e.message}" }
+                busy = false
+            } }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "جارٍ فحص Termux والربط..." else "ربط الطرفية تلقائيًا") }
+            Text("يتطلب Termux حديثًا وصلاحية RUN_COMMAND وتفعيل allow-external-apps. ينشئ الرمز ويحفظه مشفرًا دون نسخه يدويًا.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = token, onValueChange = { token = it },
                 label = { Text("رمز Termux — يُدخل مرة واحدة") }, modifier = Modifier.fillMaxWidth(),
@@ -330,7 +461,16 @@ private fun ControlCenterScreen(
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "جارٍ الاتصال..." else "اختبار الاتصال وحفظه") }
 
-            OutlinedTextField(value = command, onValueChange = { command = it }, label = { Text("أمر Linux") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+            Text("أوامر جاهزة", style = MaterialTheme.typography.titleMedium)
+            Text("اختر أمرًا لتشغيله بعد مراجعة التأكيد. يمكنك أيضًا نسخ الأمر أو تعديله في مربع الطرفية.", style = MaterialTheme.typography.bodySmall)
+            quickCommands.forEach { preset ->
+                OutlinedButton(
+                    enabled = !busy && token.length >= 40,
+                    onClick = { pendingQuickCommand = preset },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(preset.first) }
+            }
+            OutlinedTextField(value = command, onValueChange = { command = it }, label = { Text("أمر Linux — قابل للنسخ والتعديل") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
             Button(enabled = !busy && token.length >= 40 && command.isNotBlank(), onClick = {
                 scope.launch {
                     busy = true
@@ -338,6 +478,18 @@ private fun ControlCenterScreen(
                     busy = false
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text("تنفيذ الأمر في Termux") }
+
+            OutlinedButton(enabled = !busy && token.length >= 40 && output.contains("رمز الخروج:") && !output.contains("رمز الخروج: 0"), onClick = {
+                scope.launch {
+                    busy = true
+                    output = try { onAskLocal(token, "شخّص خطأ الطرفية التالي، واشرح السبب، ثم اقترح إصلاحًا آمنًا وأوامر قابلة للمراجعة. لا تفترض تنفيذ أي أمر.\\n\\n" + output) }
+                    catch (e: Exception) { "تعذر تحليل الخطأ: ${e.message}" }
+                    busy = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("تحليل آخر خطأ بالنموذج المحلي") }
+
+            Text("تخزين الكتب الكبيرة", style = MaterialTheme.typography.titleMedium)
+            Text("لإتاحة مساحة أكبر للكتب، نفّذ مرة واحدة في Termux: termux-setup-storage ثم وافق على الإذن. تُحفظ الكتب المشاركة في Download/ControlCenter ويستخدم الجسر مجلد ControlCenterWorkspace على التخزين المشترك عند توفره. لا يفرض التطبيق حد 50MB، لكن السعة الفعلية تعتمد على مساحة الجهاز.", style = MaterialTheme.typography.bodySmall)
 
             OutlinedButton(onClick = { documentPicker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("اختيار ملف أو PDF") }
             OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("النص المستلم أو المستخرج") }, modifier = Modifier.fillMaxWidth(), minLines = 5)
@@ -366,6 +518,26 @@ private fun ControlCenterScreen(
             HorizontalDivider()
             Text("ChatGPT: لم يُفعّل SIWC بعد؛ لا يتم استخدام جلسة Chrome أو استخراج ملفات تعريف الارتباط.")
             Text("ملاحظة: أوامر الطرفية تُنفذ بصلاحيات Termux. لا تنفذ أوامر غير موثوقة.")
+            pendingQuickCommand?.let { preset ->
+                AlertDialog(
+                    onDismissRequest = { pendingQuickCommand = null },
+                    title = { Text("مراجعة الأمر") },
+                    text = { SelectionContainer { Text(preset.second) } },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            pendingQuickCommand = null
+                            command = preset.second
+                            scope.launch {
+                                busy = true
+                                output = try { onRunCommand(token, preset.second) } catch (e: Exception) { "خطأ: ${e.message}" }
+                                busy = false
+                            }
+                        }) { Text("تشغيل") }
+                    },
+                    dismissButton = { TextButton(onClick = { pendingQuickCommand = null }) { Text("إلغاء") } }
+                )
+            }
         }
+    }
     }
 }

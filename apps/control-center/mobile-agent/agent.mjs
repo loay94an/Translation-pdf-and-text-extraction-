@@ -14,15 +14,35 @@ const HOME = process.env.HOME || os.homedir();
 const WORKSPACE = path.resolve(process.env.LOCAL_AGENT_WORKSPACE || path.join(HOME, 'workspace'));
 const CONFIG_DIR = path.join(HOME, '.config', 'mobile-terminal-bridge');
 const TOKEN_FILE = path.join(CONFIG_DIR, 'token');
-const MAX_BODY = 32 * 1024;
+const GITHUB_TOKEN_FILE = path.join(CONFIG_DIR, 'github-token');
+const BROWSER_CONTEXT_FILE = path.join(CONFIG_DIR, 'browser-context.json');
+const MAX_BODY = 8 * 1024 * 1024;
 const MAX_OUTPUT = 128 * 1024;
 const TIMEOUT_MS = 120_000;
 const JOBS_DIR = path.join(CONFIG_DIR, 'jobs');
 const MAX_JOB_MS = 6 * 60 * 60 * 1000;
-const MODEL_BASE_URL = (process.env.LOCAL_MODEL_BASE_URL || 'http://127.0.0.1:8080/v1').replace(/\/$/, '');
+const MODEL_CONFIG_FILE = path.join(CONFIG_DIR, 'model-config.json');
+let MODEL_BASE_URL = (process.env.LOCAL_MODEL_BASE_URL || (() => { try { return JSON.parse(fs.readFileSync(MODEL_CONFIG_FILE, 'utf8')).endpoint; } catch { return 'http://127.0.0.1:8080/v1'; } })()).replace(/\/$/, '');
 const ALLOWED_ORIGINS = new Set((process.env.LOCAL_AGENT_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean));
 const jobs = new Map();
 fs.mkdirSync(JOBS_DIR, { recursive: true, mode: 0o700 });
+function persistJob(job) {
+  const snapshot = { id: job.id, command: job.command, cwd: job.cwd, status: job.status,
+    exitCode: job.exitCode, startedAt: job.startedAt, finishedAt: job.finishedAt,
+    timedOut: !!job.timedOut, progress: job.progress || null, logPath: job.logPath };
+  fs.writeFileSync(path.join(JOBS_DIR, job.id + '.json'), JSON.stringify(snapshot, null, 2), { mode: 0o600 });
+}
+for (const name of fs.readdirSync(JOBS_DIR).filter(name => name.endsWith('.json'))) {
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(JOBS_DIR, name), 'utf8'));
+    if (!saved.id || !saved.command || !saved.logPath) continue;
+    const output = fs.existsSync(saved.logPath) ? fs.readFileSync(saved.logPath, 'utf8').slice(-MAX_OUTPUT) : '';
+    const job = { ...saved, output, child: null };
+    if (job.status === 'running') { job.status = 'interrupted'; job.finishedAt = new Date().toISOString(); }
+    jobs.set(job.id, job);
+    persistJob(job);
+  } catch {}
+}
 
 function originAllowed(origin) {
   if (!origin) return true;
@@ -30,38 +50,48 @@ function originAllowed(origin) {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
 function startJob(command, cwd, timeoutMs) {
-  if ([...jobs.values()].some(job => job.status === 'running')) throw new Error('هناك مهمة أخرى تعمل بالفعل؛ انتظر اكتمالها قبل بدء مهمة جديدة.');
+  if ([...jobs.values()].some(job => job.status === 'running' || job.status === 'cancelling')) throw new Error('هناك مهمة أخرى تعمل بالفعل؛ انتظر اكتمالها قبل بدء مهمة جديدة.');
   const id = crypto.randomUUID();
   const logPath = path.join(JOBS_DIR, id + '.log');
   const log = fs.createWriteStream(logPath, { flags: 'a', mode: 0o600 });
-  const child = spawn('bash', ['-lc', command], {
-    cwd,
-    env: { ...process.env, TERM: 'dumb', PAGER: 'cat', GIT_PAGER: 'cat' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const job = { id, command, cwd, status: 'running', exitCode: null, startedAt: new Date().toISOString(), finishedAt: null, output: '', logPath, child };
-  const append = chunk => {
-    const value = chunk.toString();
-    log.write(value);
-    job.output = (job.output + value).slice(-128 * 1024);
+  const child = spawn('bash', ['-lc', command], { cwd, env: { ...process.env, TERM: 'dumb', PAGER: 'cat', GIT_PAGER: 'cat' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const job = { id, command, cwd, status: 'running', exitCode: null, startedAt: new Date().toISOString(),
+    finishedAt: null, output: '', logPath, child, progress: { stage: 'starting', completed: 0, total: 0, percent: 0 } };
+  let pending = '';
+  const append = (chunk, isError = false) => {
+    pending += chunk.toString();
+    const lines = pending.split(String.fromCharCode(10));
+    pending = lines.pop() || '';
+    for (let line of lines) {
+      if (line.endsWith(String.fromCharCode(13))) line = line.slice(0, -1);
+      if (line.startsWith('@@PROGRESS ')) {
+        try { job.progress = JSON.parse(line.slice(11)); persistJob(job); } catch {}
+      } else {
+        const value = (isError ? '[stderr] ' : '') + line + String.fromCharCode(10);
+        log.write(value);
+        job.output = (job.output + value).slice(-MAX_OUTPUT);
+      }
+    }
   };
-  child.stdout.on('data', append);
-  child.stderr.on('data', chunk => append(Buffer.from('[stderr]\n' + chunk.toString())));
+  child.stdout.on('data', chunk => append(chunk));
+  child.stderr.on('data', chunk => append(chunk, true));
   const timer = setTimeout(() => {
     job.timedOut = true;
     child.kill('SIGTERM');
-    setTimeout(() => { if (job.status === 'running') child.kill('SIGKILL'); }, 5000).unref();
+    setTimeout(() => { if (job.status === 'running' || job.status === 'cancelling') child.kill('SIGKILL'); }, 5000).unref();
   }, Math.min(Math.max(timeoutMs || TIMEOUT_MS, 1000), MAX_JOB_MS));
   child.on('error', error => {
-    job.status = 'failed'; job.exitCode = 1; job.output += '\n' + error.message;
-    job.finishedAt = new Date().toISOString(); clearTimeout(timer); log.end();
+    job.status = 'failed'; job.exitCode = 1; job.output = (job.output + String.fromCharCode(10) + error.message).slice(-MAX_OUTPUT);
+    job.finishedAt = new Date().toISOString(); clearTimeout(timer); log.end(); persistJob(job);
   });
   child.on('close', code => {
-    job.status = job.timedOut ? 'timed_out' : (code === 0 ? 'completed' : 'failed');
+    if (pending) append(Buffer.from(String.fromCharCode(10) + pending));
+    job.status = job.timedOut ? 'timed_out' : (job.status === 'cancelling' ? 'cancelled' : (code === 0 ? 'completed' : 'failed'));
     job.exitCode = code; job.finishedAt = new Date().toISOString();
-    clearTimeout(timer); log.end();
+    clearTimeout(timer); log.end(); persistJob(job);
   });
   jobs.set(id, job);
+  persistJob(job);
   return job;
 }
 
@@ -113,8 +143,8 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': req.headers.origin || 'null',
       'Vary': 'Origin',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization,Content-Type',
+      'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,X-File-Name',
       'Access-Control-Allow-Private-Network': 'true',
       'Access-Control-Max-Age': '600',
     });
@@ -127,8 +157,150 @@ const server = http.createServer(async (req, res) => {
   if (!authorized(req)) return send(res, 401, { ok: false, error: 'رمز الاتصال غير صحيح' });
 
   const url = new URL(req.url || '/', 'http://127.0.0.1');
+
+  if (req.method === 'POST' && url.pathname === '/api/github/connect') {
+    try {
+      const body=await readBody(req); const ghToken=String(body.token||'').trim();
+      if(!/^github_pat_[A-Za-z0-9_]+$/.test(ghToken)) return send(res,400,{ok:false,error:'صيغة رمز GitHub غير معروفة'});
+      const response=await fetch('https://api.github.com/user',{headers:{Authorization:'Bearer '+ghToken,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(15000)});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)return send(res,401,{ok:false,error:data.message||'رفض GitHub الرمز أو صلاحياته'});
+      fs.writeFileSync(GITHUB_TOKEN_FILE,ghToken+'\n',{mode:0o600});try{fs.chmodSync(GITHUB_TOKEN_FILE,0o600);}catch{}
+      return send(res,200,{ok:true,login:data.login});
+    }catch(error){return send(res,400,{ok:false,error:error.message||'تعذر ربط GitHub'});}
+  }
+  if (req.method === 'POST' && url.pathname === '/api/github/disconnect') {
+    try{if(fs.existsSync(GITHUB_TOKEN_FILE))fs.unlinkSync(GITHUB_TOKEN_FILE);return send(res,200,{ok:true});}
+    catch(error){return send(res,500,{ok:false,error:'تعذر حذف الرمز'});}
+  }
+  if (url.pathname.startsWith('/api/github/')) {
+    const ghToken=fs.existsSync(GITHUB_TOKEN_FILE)?fs.readFileSync(GITHUB_TOKEN_FILE,'utf8').trim():'';
+    if(!ghToken)return send(res,401,{ok:false,error:'اربط حساب GitHub أولًا'});
+    const gh=async(apiPath,options={})=>{const response=await fetch('https://api.github.com'+apiPath,{...options,headers:{Authorization:'Bearer '+ghToken,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(options.headers||{})},signal:AbortSignal.timeout(30000)});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'GitHub API error '+response.status);return data;};
+    try{
+      if(req.method==='GET'&&url.pathname==='/api/github/repos'){
+        const data=await gh('/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member');
+        return send(res,200,{ok:true,repositories:data.map(r=>({full_name:r.full_name,private:r.private,default_branch:r.default_branch,permissions:r.permissions||{}}))});
+      }
+
+      if(req.method==='GET'&&url.pathname==='/api/github/read'){
+        const repo=url.searchParams.get('repo')||'',branch=url.searchParams.get('branch')||'main',filePath=url.searchParams.get('path')||'';
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!filePath||filePath.startsWith('/')||filePath.split('/').some(p=>!p||p==='..'))throw new Error('المستودع أو مسار الملف غير صالح');
+        const data=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
+        if(Array.isArray(data)||data.type!=='file'||data.size>1024*1024)throw new Error('القراءة تدعم الملفات النصية حتى 1MB فقط');
+        if(data.encoding!=='base64'||!data.content)throw new Error('تعذر فك ترميز الملف أو الملف ليس نصيًا');
+        const content=Buffer.from(data.content.replace(/\n/g,''),'base64').toString('utf8');
+        return send(res,200,{ok:true,path:data.path,sha:data.sha,size:data.size,content});
+      }
+
+      if(req.method==='GET'&&url.pathname==='/api/github/contents'){
+        const repo=url.searchParams.get('repo')||'',branch=url.searchParams.get('branch')||'main',dir=url.searchParams.get('path')||'';
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('اسم المستودع غير صالح');
+        const data=await gh('/repos/'+repo+'/contents/'+dir.split('/').filter(Boolean).map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));
+        const items=(Array.isArray(data)?data:[data]).map(x=>({name:x.name,path:x.path,type:x.type,size:x.size,sha:x.sha}));
+        return send(res,200,{ok:true,items});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/github/upload'){
+        const body=await readBody(req),repo=String(body.repo||''),branch=String(body.branch||'main'),filePath=String(body.path||''),b64=String(body.contentBase64||'');
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!filePath||filePath.startsWith('/')||filePath.split('/').some(p=>!p||p==='..'))throw new Error('بيانات المستودع أو مسار الملف غير صالح');
+        if(!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)||Buffer.from(b64,'base64').length>5*1024*1024)throw new Error('حجم الملف أكبر من 5MB أو ترميز الملف غير صالح');
+        let sha;try{const old=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(branch));if(!Array.isArray(old))sha=old.sha;}catch{}
+        const payload={message:String(body.message||'Upload from Control Center').slice(0,200),content:b64,branch,...(sha?{sha}:{})};
+        const result=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/'),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        return send(res,200,{ok:true,commit:result.commit?.sha,path:filePath,url:result.content?.html_url});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/github/delete'){
+        const body=await readBody(req),repo=String(body.repo||''),branch=String(body.branch||'main'),filePath=String(body.path||''),sha=String(body.sha||'');
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)||!filePath||filePath.startsWith('/')||filePath.split('/').some(p=>!p||p==='..')||!sha)throw new Error('يلزم تحديد المستودع والمسار وSHA');
+        const result=await gh('/repos/'+repo+'/contents/'+filePath.split('/').map(encodeURIComponent).join('/'),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Delete '+filePath,sha,branch})});
+        return send(res,200,{ok:true,commit:result.commit?.sha});
+      }
+      return send(res,404,{ok:false,error:'GitHub endpoint not found'});
+    }catch(error){return send(res,400,{ok:false,error:error.message||'GitHub request failed'});}
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/files/pdf') {
+    const uploadDir = path.join(WORKSPACE, 'imports');
+    const target = path.join(uploadDir, crypto.randomUUID() + '.pdf');
+    let size = 0;
+    let signature = Buffer.alloc(0);
+    let output;
+    try {
+      fs.mkdirSync(uploadDir, { recursive: true });
+      output = fs.createWriteStream(target, { flags: 'wx', mode: 0o600 });
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 1024 * 1024 * 1024) throw new Error('حجم PDF يتجاوز الحد المسموح وهو 1GB');
+        if (signature.length < 5) signature = Buffer.concat([signature, chunk.subarray(0, 5 - signature.length)]);
+        if (!output.write(chunk)) await new Promise(resolve => output.once('drain', resolve));
+      }
+      await new Promise((resolve, reject) => { output.once('error', reject); output.end(resolve); });
+      if (signature.toString('ascii') !== '%PDF-') throw new Error('الملف المحدد ليس ملف PDF صالحًا');
+      return send(res, 201, { ok: true, path: 'imports/' + path.basename(target), size });
+    } catch (error) {
+      if (output && !output.closed) output.destroy();
+      try { fs.unlinkSync(target); } catch {}
+      return send(res, 400, { ok: false, error: error.message || 'تعذر استيراد PDF' });
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/model-config') {
+    return send(res, 200, { ok: true, endpoint: MODEL_BASE_URL });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/model-config') {
+    try {
+      const body = await readBody(req);
+      const parsed = new URL(String(body.endpoint || '').trim());
+      const host = parsed.hostname.toLowerCase();
+      const localHost = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' ||
+        /^10(?:\.\d{1,3}){3}$/.test(host) || /^192\.168(?:\.\d{1,3}){2}$/.test(host) ||
+        /^172\.(1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}$/.test(host);
+      if (!['http:', 'https:'].includes(parsed.protocol) || !localHost || parsed.username || parsed.password)
+        throw new Error('استخدم عنوان خادم محلي أو داخل الشبكة الخاصة، مثل http://127.0.0.1:8080/v1');
+      MODEL_BASE_URL = parsed.toString().replace(/\/$/, '');
+      fs.writeFileSync(MODEL_CONFIG_FILE, JSON.stringify({ endpoint: MODEL_BASE_URL }, null, 2), { mode: 0o600 });
+      try { fs.chmodSync(MODEL_CONFIG_FILE, 0o600); } catch {}
+      return send(res, 200, { ok: true, endpoint: MODEL_BASE_URL });
+    } catch (error) {
+      return send(res, 400, { ok: false, error: error.message || 'عنوان النموذج غير صالح' });
+    }
+  }
   if (req.method === 'GET' && url.pathname === '/api/health') {
-    return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size });
+    return send(res, 200, { ok: true, platform: os.platform() + ' / ' + os.release(), workspace: WORKSPACE, jobs: jobs.size, activeJobs: [...jobs.values()].filter(job => job.status === 'running').length });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/storage') {
+    try {
+      const stat = fs.statfsSync(WORKSPACE);
+      const blockSize = Number(stat.bsize);
+      const totalBytes = Number(stat.blocks) * blockSize;
+      const freeBytes = Number(stat.bavail) * blockSize;
+      return send(res, 200, { ok: true, workspace: WORKSPACE, totalBytes,
+        freeBytes, usedBytes: Math.max(0, totalBytes - Number(stat.bfree) * blockSize) });
+    } catch (error) {
+      return send(res, 500, { ok: false, error: 'تعذر قراءة مساحة التخزين: ' + error.message });
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/context') {
+    try {
+      const saved = fs.existsSync(BROWSER_CONTEXT_FILE) ? JSON.parse(fs.readFileSync(BROWSER_CONTEXT_FILE, 'utf8')) : { items: [] };
+      return send(res, 200, { ok: true, items: Array.isArray(saved.items) ? saved.items.slice(-10) : [] });
+    } catch (error) { return send(res, 500, { ok: false, error: 'تعذر قراءة سياق المتصفح المحفوظ' }); }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/context') {
+    try {
+      const body = await readBody(req);
+      if (typeof body.text !== 'string' || !body.text.trim()) return send(res, 400, { ok: false, error: 'text is required' });
+      if (body.text.length > 24000) return send(res, 413, { ok: false, error: 'browser context exceeds 24,000 characters' });
+      const saved = fs.existsSync(BROWSER_CONTEXT_FILE) ? JSON.parse(fs.readFileSync(BROWSER_CONTEXT_FILE, 'utf8')) : { items: [] };
+      const item = { id: crypto.randomUUID(), source: String(body.source || 'browser').slice(0, 80), text: body.text.trim(), createdAt: new Date().toISOString() };
+      const items = [...(Array.isArray(saved.items) ? saved.items : []), item].slice(-10);
+      fs.writeFileSync(BROWSER_CONTEXT_FILE, JSON.stringify({ items }, null, 2), { mode: 0o600 });
+      try { fs.chmodSync(BROWSER_CONTEXT_FILE, 0o600); } catch {}
+      return send(res, 201, { ok: true, item: { id: item.id, source: item.source, createdAt: item.createdAt, characters: item.text.length }, count: items.length });
+    } catch (error) { return send(res, 400, { ok: false, error: error.message || 'invalid browser context' }); }
+  }
+  if (req.method === 'DELETE' && url.pathname === '/api/context') {
+    try { if (fs.existsSync(BROWSER_CONTEXT_FILE)) fs.unlinkSync(BROWSER_CONTEXT_FILE); return send(res, 200, { ok: true }); }
+    catch (error) { return send(res, 500, { ok: false, error: 'تعذر مسح سياق المتصفح' }); }
   }
   if (req.method === 'GET' && url.pathname === '/api/providers') {
     const providers = [
@@ -177,9 +349,31 @@ const server = http.createServer(async (req, res) => {
       if (process.env.LOCAL_MODEL_API_KEY) headers.Authorization = 'Bearer ' + process.env.LOCAL_MODEL_API_KEY;
       const response = await fetch(MODEL_BASE_URL + '/models', { headers, signal: AbortSignal.timeout(5000) });
       const data = await response.json().catch(() => ({}));
-      return send(res, response.ok ? 200 : 502, { ok: response.ok, endpoint: MODEL_BASE_URL, status: response.status, models: data.data || [], error: response.ok ? undefined : (data.error?.message || 'model server returned an error') });
+      return send(res, response.ok ? 200 : 502, { ok: response.ok, endpoint: MODEL_BASE_URL, status: response.status, models: (Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : []).map(item => ({ id: String(item.id || item.name || '') })).filter(item => item.id), error: response.ok ? undefined : (data.error?.message || 'model server returned an error') });
     } catch (error) {
       return send(res, 502, { ok: false, endpoint: MODEL_BASE_URL, error: error.message || 'local model is unreachable' });
+    }
+  }
+  if (req.method === 'GET' && url.pathname === '/api/extracted-pages') {
+    try {
+      const relative = url.searchParams.get('path') || '';
+      if (!relative || path.isAbsolute(relative) || relative.includes('\0')) throw new Error('path must be a relative JSONL path inside workspace');
+      const target = path.resolve(WORKSPACE, relative);
+      if (target !== WORKSPACE && !target.startsWith(WORKSPACE + path.sep)) throw new Error('path escapes workspace');
+      const real = fs.realpathSync(target);
+      if (!real.startsWith(WORKSPACE + path.sep) || !real.endsWith('.jsonl')) throw new Error('only JSONL files inside workspace are allowed');
+      const stat = fs.statSync(real);
+      if (!stat.isFile() || stat.size > 8 * 1024 * 1024) throw new Error('file is missing or exceeds the 8MB preview limit');
+      const lines = fs.readFileSync(real, 'utf8').split(/\r?\n/).filter(Boolean);
+      if (lines.length > 2500) throw new Error('page count exceeds preview limit (2500)');
+      const pages = lines.map((line, index) => {
+        const item = JSON.parse(line);
+        if (!Number.isInteger(item.page) || typeof item.text !== 'string') throw new Error('invalid page record at line ' + (index + 1));
+        return { page: item.page, text: item.text };
+      }).sort((a, b) => a.page - b.page);
+      return send(res, 200, { ok: true, pages });
+    } catch (error) {
+      return send(res, 400, { ok: false, error: error.message || 'cannot read extracted pages' });
     }
   }
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
@@ -194,11 +388,36 @@ const server = http.createServer(async (req, res) => {
       return send(res, 400, { ok: false, error: error.message || 'invalid job request' });
     }
   }
-  if (req.method === 'GET' && url.pathname.startsWith('/api/jobs/')) {
-    const id = url.pathname.slice('/api/jobs/'.length);
+  if (req.method === 'GET' && url.pathname === '/api/jobs') {
+    const items = [...jobs.values()].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 100)
+      .map(job => ({ id: job.id, status: job.status, exitCode: job.exitCode, startedAt: job.startedAt,
+        finishedAt: job.finishedAt, cwd: job.cwd, progress: job.progress || null }));
+    return send(res, 200, { ok: true, jobs: items });
+  }
+  if (url.pathname.startsWith('/api/jobs/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    const id = parts[2];
     const job = jobs.get(id);
-    if (!job) return send(res, 404, { ok: false, error: 'job not found in this agent session' });
-    return send(res, 200, { ok: true, job: { id: job.id, status: job.status, exitCode: job.exitCode, startedAt: job.startedAt, finishedAt: job.finishedAt, timedOut: !!job.timedOut, cwd: job.cwd, output: job.output } });
+    if (!job) return send(res, 404, { ok: false, error: 'job not found' });
+    if (req.method === 'POST' && parts[3] === 'cancel') {
+      if (job.status !== 'running' || !job.child) return send(res, 409, { ok: false, error: 'job is not running in this agent process' });
+      job.status = 'cancelling'; persistJob(job); job.child.kill('SIGTERM');
+      setTimeout(() => { if (job.child && job.status === 'cancelling') job.child.kill('SIGKILL'); }, 4000).unref();
+      return send(res, 202, { ok: true, job: { id, status: job.status } });
+    }
+    if (req.method === 'POST' && parts[3] === 'retry') {
+      if (!['failed', 'timed_out', 'interrupted'].includes(job.status)) return send(res, 409, { ok: false, error: 'only failed or interrupted jobs can be retried' });
+      try {
+        const cwd = resolveCwd(path.relative(WORKSPACE, job.cwd));
+        const nextJob = startJob(job.command, cwd, MAX_JOB_MS);
+        return send(res, 202, { ok: true, job: { id: nextJob.id, status: nextJob.status, startedAt: nextJob.startedAt, retryOf: id } });
+      } catch (error) { return send(res, 409, { ok: false, error: error.message }); }
+    }
+    if (req.method === 'GET' && parts.length === 3) {
+      return send(res, 200, { ok: true, job: { id: job.id, status: job.status, exitCode: job.exitCode,
+        startedAt: job.startedAt, finishedAt: job.finishedAt, timedOut: !!job.timedOut, cwd: job.cwd,
+        progress: job.progress || null, output: job.output, command: job.command } });
+    }
   }
   if (req.method === 'POST' && url.pathname === '/api/exec') {
     try {
