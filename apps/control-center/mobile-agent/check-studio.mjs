@@ -12,6 +12,16 @@ const activity = fs.readFileSync('apps/control-center/mobile-agent/android-app/a
 for (const token of ['WebViewAssetLoader', 'AndroidSecureStore', 'appassets.androidplatform.net/assets/studio.html']) {
   if (!activity.includes(token)) throw new Error('Missing embedded Android Studio integration: ' + token);
 }
+const agent = fs.readFileSync('apps/control-center/mobile-agent/agent.mjs', 'utf8');
+for (const token of ['/api/files/pdf', '/api/model-config', '/api/models', '/api/chat']) {
+  if (!agent.includes(token)) throw new Error('Missing Termux agent API route: ' + token);
+}
+for (const token of ['id="pdfFile"', 'id="uploadPdf"', 'id="modelEndpoint"', '--base-url']) {
+  if (!html.includes(token)) throw new Error('Missing PDF/model integration in Studio: ' + token);
+}
+for (const token of ['WebChromeClient', 'onShowFileChooser', 'studioPdfPicker', 'openStudioPdfPicker']) {
+  if (!activity.includes(token)) throw new Error('Missing Android PDF picker integration: ' + token);
+}
 const startScript = fs.readFileSync('apps/control-center/mobile-agent/start.sh', 'utf8');
 if (!startScript.includes('https://appassets.androidplatform.net')) throw new Error('Android Studio origin is not allowed by the Termux agent launcher');
 const start = html.indexOf('<script>');
