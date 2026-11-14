@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
         val command = Intent().apply {
             setClassName("com.termux", "com.termux.app.RunCommandService"); action = "com.termux.RUN_COMMAND"
             putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", "$HOME/.local/bin/control-center-bridge-connect"))
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", "\$HOME/.local/bin/control-center-bridge-connect"))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true); putExtra("pendingIntent", pending)
         }
